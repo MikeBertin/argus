@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# Generated attack fixtures are reproducible from fixtures/generate.py
+fixtures/pcaps/generated/

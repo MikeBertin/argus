@@ -1,0 +1,33 @@
+name: CI
+
+# Regression gate: install tshark + deps and run the full pytest suite.
+# This workflow assumes ARGUS is the repository root (paths are relative to it).
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install tshark (pyshark backend)
+        run: |
+          echo "wireshark-common wireshark-common/install-setuid boolean false" \
+            | sudo debconf-set-selections
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y tshark
+          tshark --version | head -1
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        # Synthetic attack fixtures are regenerated automatically by the test
+        # session (tests/conftest.py) if missing.
+        run: python -m pytest -q

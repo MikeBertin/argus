@@ -1,0 +1,6 @@
+# ARGUS — Python dependencies
+# System dependency: tshark (brew install wireshark) — pyshark wraps it.
+pyshark==0.6
+scapy==2.7.0
+rich==15.0.0
+pytest==9.1.1
