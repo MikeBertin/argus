@@ -27,6 +27,13 @@ from scapy.all import (  # type: ignore
     Raw,
     wrpcap,
 )
+from scapy.layers.tls.handshake import TLSClientHello  # type: ignore
+from scapy.layers.tls.extensions import (  # type: ignore
+    TLS_Ext_SignatureAlgorithms,
+    TLS_Ext_SupportedGroups,
+    TLS_Ext_SupportedPointFormat,
+)
+from scapy.layers.tls.record import TLS  # type: ignore
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "pcaps", "generated")
@@ -239,6 +246,44 @@ def bruteforce_rdp() -> list:
     return _bruteforce(3389, t0=1_700_000_800.0)
 
 
+def _client_hello(src, dst, sport, ciphers, groups, t):
+    ch = TLSClientHello(
+        version=0x0303,
+        ciphers=ciphers,
+        ext=[
+            TLS_Ext_SupportedGroups(groups=groups),
+            TLS_Ext_SupportedPointFormat(ecpl=["uncompressed"]),
+            TLS_Ext_SignatureAlgorithms(),
+        ],
+    )
+    p = (
+        Ether(src="de:ad:be:ef:00:01", dst="de:ad:be:ef:00:02")
+        / IP(src=src, dst=dst)
+        / TCP(sport=sport, dport=443, flags="PA", seq=1)
+        / TLS(msg=[ch])
+    )
+    p.time = t
+    return p
+
+
+def tls_ja3() -> list:
+    """Two TLS Client Hellos: a 'malicious' fingerprint (blocklisted by the seed)
+    talking to C2, and a benign one (enrichment only)."""
+    t = 1_700_000_900.0
+    # Distinctive, fixed fingerprint → deterministic JA3 (seeded into the blocklist).
+    malicious = _client_hello(
+        VICTIM, C2, 51000,
+        ciphers=[0xC02B, 0xC02F, 0xCCA9, 0xCCA8, 0xC013, 0xC014, 0x009C, 0x002F, 0x0035],
+        groups=["x25519", "secp256r1", "secp384r1"], t=t,
+    )
+    benign = _client_hello(
+        VICTIM, "93.184.216.34", 51002,
+        ciphers=[0x1301, 0x1302, 0x1303, 0xC02B, 0xC02F, 0x009E],
+        groups=["x25519", "secp256r1"], t=t + 1,
+    )
+    return [malicious, benign]
+
+
 def main() -> None:
     os.makedirs(OUT, exist_ok=True)
     captures = {
@@ -251,6 +296,7 @@ def main() -> None:
         "arp_spoof.pcap": arp_spoof(),
         "bruteforce_smb.pcap": bruteforce_smb(),
         "bruteforce_rdp.pcap": bruteforce_rdp(),
+        "tls_ja3.pcap": tls_ja3(),
     }
     for name, pkts in captures.items():
         path = os.path.join(OUT, name)

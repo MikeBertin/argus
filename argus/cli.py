@@ -41,11 +41,33 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="list available detection rules and exit",
     )
+    p.add_argument(
+        "--update-ja3",
+        action="store_true",
+        help="refresh the JA3 blocklist from the feed and exit",
+    )
+    p.add_argument(
+        "--ja3-feed-url",
+        metavar="URL",
+        help="override the JA3 feed URL used by --update-ja3",
+    )
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+
+    if args.update_ja3:
+        from argus.ja3_blocklist import DEFAULT_FEED_URL, update_from_feed
+
+        url = args.ja3_feed_url or DEFAULT_FEED_URL
+        try:
+            count = update_from_feed(url)
+        except Exception as exc:  # network/parse failure — report clearly
+            print(f"JA3 feed update failed ({url}): {exc}", file=sys.stderr)
+            return 2
+        print(f"JA3 blocklist updated: {count} fingerprints cached from {url}")
+        return 0
 
     all_rules = discover_rules()
 
