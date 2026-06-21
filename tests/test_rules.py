@@ -4,8 +4,6 @@ The benign assertions are the important half: false-positive resistance is what
 separates a detection engine from a pile of greps.
 """
 
-from pathlib import Path
-
 import pytest
 from conftest import PCAPS
 
@@ -29,18 +27,6 @@ POSITIVES = {
 
 # benign captures that must produce zero findings
 BENIGN = ["http.cap", "nb6-startup.pcap", "dns+icmp.pcapng"]
-
-
-def _ensure_generated():
-    if not (PCAPS / "generated" / "dns_tunnel.pcap").exists():
-        import fixtures.generate as gen  # noqa: WPS433
-
-        gen.main()
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _fixtures_present():
-    _ensure_generated()
 
 
 @pytest.mark.parametrize("fixture,rule_id", POSITIVES.items())
