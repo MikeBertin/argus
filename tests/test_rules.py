@@ -23,6 +23,8 @@ POSITIVES = {
     "generated/bruteforce_smb.pcap": "bruteforce",
     "generated/bruteforce_rdp.pcap": "bruteforce",
     "generated/tls_fingerprint.pcap": "tls_fingerprint",
+    "generated/llmnr_spoof.pcap": "llmnr_spoof",
+    "generated/rogue_dhcp.pcap": "rogue_dhcp",
 }
 
 # benign captures that must produce zero findings
@@ -50,6 +52,13 @@ def test_zerologon_does_not_trigger_port_scan():
     result = Engine().analyze(str(PCAPS / "zerologon.pcap"))
     fired = {f.rule_id for f in result.findings}
     assert "port_scan" not in fired, "RPC dynamic ports falsely flagged as a port scan"
+
+
+def test_redundant_dhcp_servers_do_not_trigger_rogue_dhcp():
+    """nb6-startup has two DHCP server-ids offering the SAME gateway (legit ISP
+    redundancy) — the conflict-based rule must not flag it."""
+    result = Engine().analyze(str(PCAPS / "nb6-startup.pcap"))
+    assert "rogue_dhcp" not in {f.rule_id for f in result.findings}
 
 
 def test_zerologon_does_not_trigger_bruteforce():

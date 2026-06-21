@@ -39,6 +39,17 @@ def field(obj, *names, default=None):
     return default
 
 
+def field_values(obj, *names) -> list[str]:
+    """All values of a (possibly repeated) pyshark field, by candidate name."""
+    if obj is None:
+        return []
+    for n in names:
+        container = obj.get_field(n)
+        if container is not None:
+            return [f.show for f in container.all_fields]
+    return []
+
+
 def truthy(value) -> bool:
     """Interpret a pyshark boolean-ish field value as a bool."""
     return value is True or str(value).lower() in ("1", "true")

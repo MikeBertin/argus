@@ -27,6 +27,8 @@ from scapy.all import (  # type: ignore
     Raw,
     wrpcap,
 )
+from scapy.all import DNSRR  # type: ignore
+from scapy.layers.dhcp import BOOTP, DHCP  # type: ignore
 from scapy.layers.tls.handshake import TLSClientHello  # type: ignore
 from scapy.layers.tls.extensions import (  # type: ignore
     TLS_Ext_SignatureAlgorithms,
@@ -284,6 +286,51 @@ def tls_fingerprint() -> list:
     return [malicious, benign]
 
 
+def llmnr_spoof(n_names: int = 6) -> list:
+    """A poisoner answering LLMNR queries for many distinct names (Responder)."""
+    pkts = []
+    t = 1_700_001_000.0
+    attacker = "10.0.0.66"
+    names = ["wpad", "fileserver", "intranet", "printsrv", "backup", "sharepoint"][:n_names]
+    for i, name in enumerate(names):
+        # LLMNR uses the DNS wire format on UDP 5355; response → attacker IP.
+        p = (
+            Ether(src="de:ad:be:ef:00:01", dst="de:ad:be:ef:00:02")
+            / IP(src=attacker, dst=VICTIM)
+            / UDP(sport=5355, dport=50000 + i)
+            / DNS(id=i, qr=1, qd=DNSQR(qname=name, qtype="A"),
+                  an=DNSRR(rrname=name, type="A", rdata=attacker))
+        )
+        p.time = t + i * 0.1
+        pkts.append(p)
+    return pkts
+
+
+def _dhcp_offer(server_ip, server_mac, gateway, dns, t):
+    return (
+        Ether(src=server_mac, dst="ff:ff:ff:ff:ff:ff")
+        / IP(src=server_ip, dst="255.255.255.255")
+        / UDP(sport=67, dport=68)
+        / BOOTP(op=2, yiaddr="10.0.0.123", siaddr=server_ip)
+        / DHCP(options=[
+            ("message-type", "offer"),
+            ("server_id", server_ip),
+            ("router", gateway),
+            ("name_server", dns),
+            "end",
+        ])
+    )
+
+
+def rogue_dhcp() -> list:
+    """Legit DHCP offer (gateway .1) racing a rogue offer (gateway = attacker)."""
+    t = 1_700_001_100.0
+    legit = _dhcp_offer("10.0.0.1", "aa:aa:aa:00:00:01", "10.0.0.1", "10.0.0.1", t)
+    rogue = _dhcp_offer("10.0.0.66", "de:ad:be:ef:00:01", "10.0.0.66", "10.0.0.66", t + 0.2)
+    legit.time, rogue.time = t, t + 0.2
+    return [legit, rogue]
+
+
 def main() -> None:
     os.makedirs(OUT, exist_ok=True)
     captures = {
@@ -297,6 +344,8 @@ def main() -> None:
         "bruteforce_smb.pcap": bruteforce_smb(),
         "bruteforce_rdp.pcap": bruteforce_rdp(),
         "tls_fingerprint.pcap": tls_fingerprint(),
+        "llmnr_spoof.pcap": llmnr_spoof(),
+        "rogue_dhcp.pcap": rogue_dhcp(),
     }
     for name, pkts in captures.items():
         path = os.path.join(OUT, name)

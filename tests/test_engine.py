@@ -14,6 +14,7 @@ def test_loader_discovers_all_rules():
     assert {
         "zerologon", "dns_tunnel", "icmp_exfil", "cleartext_creds",
         "beaconing", "port_scan", "arp_spoof", "bruteforce", "tls_fingerprint",
+        "llmnr_spoof", "rogue_dhcp",
     } <= ids
     # ids are unique
     assert len(ids) == len(rules)

@@ -47,7 +47,7 @@ python3.13 -m venv .venv               # pyshark 0.6 needs Python 3.13 (not 3.14
 .venv/bin/python -m argus.cli --html report.html <pcap>         # self-contained dashboard
 .venv/bin/python -m argus.cli --list-rules
 .venv/bin/python -m argus.cli --update-ja3                      # refresh JA3 blocklist from abuse.ch
-.venv/bin/python -m pytest                                      # 36 tests
+.venv/bin/python -m pytest                                      # 39 tests
 ```
 Exit code is non-zero when any HIGH/CRITICAL finding is present (CI-friendly).
 
@@ -72,6 +72,8 @@ future web-server mode.
 | `arp_spoof` | One IP address claimed by 2+ MAC addresses (cache poisoning) | T1557.002 | HIGH | generated |
 | `bruteforce` | Many established login connections to one auth service (SMB/RDP/SSH/…) | T1110 | HIGH | generated |
 | `tls_fingerprint` | TLS Client Hello JA3 **and** JA4 matched against a known-bad blocklist (+ fingerprint enrichment for all TLS) | T1573 | HIGH / INFO | generated |
+| `llmnr_spoof` | One responder answering LLMNR/NBT-NS queries for many distinct names (Responder) | T1557.001 | HIGH | generated |
+| `rogue_dhcp` | Conflicting gateway/DNS offered via DHCP (rogue server redirecting traffic) | T1557 | HIGH | generated |
 
 ### TLS fingerprinting (JA3 + JA4)
 `tls_fingerprint` computes both the [JA3](https://github.com/salesforce/ja3) and the
