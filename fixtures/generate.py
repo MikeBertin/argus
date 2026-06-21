@@ -266,9 +266,9 @@ def _client_hello(src, dst, sport, ciphers, groups, t):
     return p
 
 
-def tls_ja3() -> list:
-    """Two TLS Client Hellos: a 'malicious' fingerprint (blocklisted by the seed)
-    talking to C2, and a benign one (enrichment only)."""
+def tls_fingerprint() -> list:
+    """Two TLS Client Hellos: a 'malicious' fingerprint (blocklisted by the seed,
+    JA3 + JA4) talking to C2, and a benign one (enrichment only)."""
     t = 1_700_000_900.0
     # Distinctive, fixed fingerprint → deterministic JA3 (seeded into the blocklist).
     malicious = _client_hello(
@@ -296,7 +296,7 @@ def main() -> None:
         "arp_spoof.pcap": arp_spoof(),
         "bruteforce_smb.pcap": bruteforce_smb(),
         "bruteforce_rdp.pcap": bruteforce_rdp(),
-        "tls_ja3.pcap": tls_ja3(),
+        "tls_fingerprint.pcap": tls_fingerprint(),
     }
     for name, pkts in captures.items():
         path = os.path.join(OUT, name)

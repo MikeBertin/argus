@@ -47,7 +47,7 @@ python3.13 -m venv .venv               # pyshark 0.6 needs Python 3.13 (not 3.14
 .venv/bin/python -m argus.cli --html report.html <pcap>         # self-contained dashboard
 .venv/bin/python -m argus.cli --list-rules
 .venv/bin/python -m argus.cli --update-ja3                      # refresh JA3 blocklist from abuse.ch
-.venv/bin/python -m pytest                                      # 33 tests
+.venv/bin/python -m pytest                                      # 36 tests
 ```
 Exit code is non-zero when any HIGH/CRITICAL finding is present (CI-friendly).
 
@@ -71,13 +71,17 @@ future web-server mode.
 | `port_scan` | One src probing many ports/hosts with unestablished SYNs (vertical + horizontal) | T1046 | MEDIUM | generated |
 | `arp_spoof` | One IP address claimed by 2+ MAC addresses (cache poisoning) | T1557.002 | HIGH | generated |
 | `bruteforce` | Many established login connections to one auth service (SMB/RDP/SSH/…) | T1110 | HIGH | generated |
-| `ja3_fingerprint` | TLS Client Hello JA3 matched against a known-bad blocklist (+ JA3 enrichment for all TLS) | T1573 | HIGH / INFO | generated |
+| `tls_fingerprint` | TLS Client Hello JA3 **and** JA4 matched against a known-bad blocklist (+ fingerprint enrichment for all TLS) | T1573 | HIGH / INFO | generated |
 
-### TLS / JA3 fingerprinting
-`ja3_fingerprint` computes the [JA3](https://github.com/salesforce/ja3) fingerprint
-(GREASE-aware) of every TLS Client Hello. It flags **HIGH** when the JA3 matches a
-known-bad blocklist, and records **INFO** enrichment for every other TLS client so
-analysts can pivot on fingerprints. The blocklist is an embedded seed (no fabricated
+### TLS fingerprinting (JA3 + JA4)
+`tls_fingerprint` computes both the [JA3](https://github.com/salesforce/ja3) and the
+newer [JA4](https://github.com/FoxIO-LLC/ja4) (FoxIO) fingerprint of every TLS Client
+Hello (GREASE-aware). It flags **HIGH** when *either* matches a known-bad blocklist,
+and records **INFO** enrichment carrying both fingerprints for every other TLS client
+so analysts can pivot on the client stack. The JA4 implementation is validated
+byte-for-byte against tshark's native `tls.handshake.ja4` in the test suite.
+
+The blocklist holds JA3 MD5s and/or JA4 strings — an embedded seed (no fabricated
 malware attributions) plus an optional live feed cached locally:
 ```bash
 argus --update-ja3                       # pull + cache abuse.ch SSLBL JA3 feed

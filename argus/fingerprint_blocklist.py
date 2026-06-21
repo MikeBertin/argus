@@ -1,8 +1,10 @@
-"""Known-bad JA3 blocklist: embedded seed + optional refreshable feed.
+"""Known-bad TLS fingerprint blocklist (JA3 + JA4): embedded seed + refreshable feed.
 
-Design honesty: ARGUS does not ship fabricated "JA3 → named malware" attributions.
-The embedded seed (``data/ja3_blocklist.json``) contains only entries whose
-provenance is stated (e.g. the test fixture). Real threat intel is layered on via
+The blocklist maps a fingerprint string — a JA3 MD5 (32 hex) or a JA4 string
+(``t13d…_…_…``) — to ``{label, source}``. Design honesty: ARGUS ships no fabricated
+"fingerprint → named malware" attributions. The embedded seed
+(``data/fingerprint_blocklist.json``) contains only entries whose provenance is
+stated (e.g. the test fixture). Real threat intel is layered on via
 ``update_from_feed()`` (default: abuse.ch SSLBL JA3 feed), cached locally so the
 detection still works offline afterwards.
 """
@@ -14,7 +16,7 @@ import os
 import urllib.request
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
-_EMBEDDED = os.path.join(_DATA_DIR, "ja3_blocklist.json")
+_EMBEDDED = os.path.join(_DATA_DIR, "fingerprint_blocklist.json")
 _CACHE = os.path.expanduser("~/.argus/ja3_feed.json")
 
 # abuse.ch SSLBL JA3 fingerprint blacklist (CSV). May change/deprecate over time;

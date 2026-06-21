@@ -58,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     if args.update_ja3:
-        from argus.ja3_blocklist import DEFAULT_FEED_URL, update_from_feed
+        from argus.fingerprint_blocklist import DEFAULT_FEED_URL, update_from_feed
 
         url = args.ja3_feed_url or DEFAULT_FEED_URL
         try:

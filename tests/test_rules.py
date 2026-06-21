@@ -22,7 +22,7 @@ POSITIVES = {
     "generated/arp_spoof.pcap": "arp_spoof",
     "generated/bruteforce_smb.pcap": "bruteforce",
     "generated/bruteforce_rdp.pcap": "bruteforce",
-    "generated/tls_ja3.pcap": "ja3_fingerprint",
+    "generated/tls_fingerprint.pcap": "tls_fingerprint",
 }
 
 # benign captures that must produce zero findings
