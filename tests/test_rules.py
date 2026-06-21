@@ -22,6 +22,8 @@ POSITIVES = {
     "generated/port_scan_vertical.pcap": "port_scan",
     "generated/port_scan_horizontal.pcap": "port_scan",
     "generated/arp_spoof.pcap": "arp_spoof",
+    "generated/bruteforce_smb.pcap": "bruteforce",
+    "generated/bruteforce_rdp.pcap": "bruteforce",
 }
 
 # benign captures that must produce zero findings
@@ -61,6 +63,19 @@ def test_zerologon_does_not_trigger_port_scan():
     result = Engine().analyze(str(PCAPS / "zerologon.pcap"))
     fired = {f.rule_id for f in result.findings}
     assert "port_scan" not in fired, "RPC dynamic ports falsely flagged as a port scan"
+
+
+def test_zerologon_does_not_trigger_bruteforce():
+    """zerologon opens only 2 SMB connections — well under the brute-force threshold."""
+    result = Engine().analyze(str(PCAPS / "zerologon.pcap"))
+    assert "bruteforce" not in {f.rule_id for f in result.findings}
+
+
+def test_bruteforce_does_not_overlap_scan_or_beacon():
+    """Established login connections must read as brute-force only, not scan/beacon."""
+    result = Engine().analyze(str(PCAPS / "generated/bruteforce_smb.pcap"))
+    fired = {f.rule_id for f in result.findings}
+    assert fired == {"bruteforce"}, f"unexpected overlap: {fired}"
 
 
 def test_zerologon_is_critical_and_attributed():

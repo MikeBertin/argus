@@ -29,6 +29,7 @@ TECHNIQUES: dict[str, Technique] = {
     ),
     "T1040": Technique("T1040", "Network Sniffing", "Credential Access"),
     "T1046": Technique("T1046", "Network Service Discovery", "Discovery"),
+    "T1110": Technique("T1110", "Brute Force", "Credential Access"),
     "T1557.002": Technique("T1557.002", "ARP Cache Poisoning", "Credential Access"),
 }
 

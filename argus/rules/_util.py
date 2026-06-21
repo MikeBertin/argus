@@ -39,6 +39,11 @@ def field(obj, *names, default=None):
     return default
 
 
+def truthy(value) -> bool:
+    """Interpret a pyshark boolean-ish field value as a bool."""
+    return value is True or str(value).lower() in ("1", "true")
+
+
 def is_all_zero_hex(value: str | None) -> bool:
     """True if a hex string (with or without ':' separators) is all zeros."""
     if not value:

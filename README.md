@@ -46,7 +46,7 @@ python3.13 -m venv .venv               # pyshark 0.6 needs Python 3.13 (not 3.14
 .venv/bin/python -m argus.cli --json <pcap>                     # machine-readable
 .venv/bin/python -m argus.cli --html report.html <pcap>         # self-contained dashboard
 .venv/bin/python -m argus.cli --list-rules
-.venv/bin/python -m pytest                                      # 22 tests
+.venv/bin/python -m pytest                                      # 26 tests
 ```
 Exit code is non-zero when any HIGH/CRITICAL finding is present (CI-friendly).
 
@@ -69,6 +69,7 @@ future web-server mode.
 | `beaconing` | Many low-jitter connections to one dst:port | T1071 | MEDIUM | generated |
 | `port_scan` | One src probing many ports/hosts with unestablished SYNs (vertical + horizontal) | T1046 | MEDIUM | generated |
 | `arp_spoof` | One IP address claimed by 2+ MAC addresses (cache poisoning) | T1557.002 | HIGH | generated |
+| `bruteforce` | Many established login connections to one auth service (SMB/RDP/SSH/…) | T1110 | HIGH | generated |
 
 **False-positive guards** (harness asserts zero findings): `http.cap` (web browsing),
 `dns+icmp.pcapng` (normal PTR lookups + pings), `nb6-startup.pcap` (NetBIOS startup).

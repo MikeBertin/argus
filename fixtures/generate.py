@@ -192,6 +192,53 @@ def arp_spoof(n_forged: int = 12) -> list:
     return pkts
 
 
+def _bruteforce(port: int, t0: float, n: int = 15) -> list:
+    """One source making N full TCP login connections to one auth-service port.
+
+    Each connection = SYN, SYN-ACK, a data segment (the auth attempt), RST — i.e.
+    established + data, so it reads as a login attempt (not a scan).
+    """
+    pkts = []
+    atk, atk_mac = C2, "de:ad:be:ef:00:01"
+    target, target_mac = "10.0.0.10", "aa:bb:cc:00:00:10"
+    for i in range(n):
+        sport = 40000 + i
+        base = t0 + i * 0.3
+        syn = (
+            Ether(src=atk_mac, dst=target_mac)
+            / IP(src=atk, dst=target)
+            / TCP(sport=sport, dport=port, flags="S", seq=1000 + i)
+        )
+        synack = (
+            Ether(src=target_mac, dst=atk_mac)
+            / IP(src=target, dst=atk)
+            / TCP(sport=port, dport=sport, flags="SA", seq=5000 + i, ack=1001 + i)
+        )
+        data = (
+            Ether(src=atk_mac, dst=target_mac)
+            / IP(src=atk, dst=target)
+            / TCP(sport=sport, dport=port, flags="PA", seq=1001 + i, ack=5001 + i)
+            / Raw(load=b"\x00\x00login=admin pass=guess%d" % i)
+        )
+        rst = (
+            Ether(src=atk_mac, dst=target_mac)
+            / IP(src=atk, dst=target)
+            / TCP(sport=sport, dport=port, flags="R", seq=1040 + i)
+        )
+        for j, p in enumerate((syn, synack, data, rst)):
+            p.time = base + j * 0.01
+            pkts.append(p)
+    return pkts
+
+
+def bruteforce_smb() -> list:
+    return _bruteforce(445, t0=1_700_000_700.0)
+
+
+def bruteforce_rdp() -> list:
+    return _bruteforce(3389, t0=1_700_000_800.0)
+
+
 def main() -> None:
     os.makedirs(OUT, exist_ok=True)
     captures = {
@@ -202,6 +249,8 @@ def main() -> None:
         "port_scan_vertical.pcap": port_scan_vertical(),
         "port_scan_horizontal.pcap": port_scan_horizontal(),
         "arp_spoof.pcap": arp_spoof(),
+        "bruteforce_smb.pcap": bruteforce_smb(),
+        "bruteforce_rdp.pcap": bruteforce_rdp(),
     }
     for name, pkts in captures.items():
         path = os.path.join(OUT, name)
