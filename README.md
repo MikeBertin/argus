@@ -106,6 +106,15 @@ tick) and findings are **de-duplicated** so a scan isn't re-alerted every tick. 
 capture needs packet-capture privileges (`sudo` / BPF on macOS, `cap_net_raw` on Linux).
 The same rules run in batch and live — batch (`analyze`) simply never evicts.
 
+**Output sinks** (composable; console is always on): `--jsonl PATH` (JSON-lines for SIEM
+ingestion), `--syslog [ADDRESS]` (local socket or `host:port` remote UDP; severity → syslog
+priority), and `--webhook URL` (POSTs each finding as JSON with a Slack-style `text` field;
+a flaky endpoint warns once and never stops the monitor). Use `--min-severity MEDIUM` to
+keep INFO enrichment off syslog/webhook.
+```bash
+sudo argus --interface en0 --syslog --webhook https://hooks.example/argus --min-severity HIGH
+```
+
 ### Web-server mode
 `--serve` analyses the pcap and serves the report over HTTP instead of writing a file —
 `GET /` returns the interactive dashboard, `GET /report.json` the model:

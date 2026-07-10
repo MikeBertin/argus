@@ -53,6 +53,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--jsonl", metavar="PATH",
         help="also append live findings as JSON-lines to PATH",
     )
+    live.add_argument(
+        "--syslog", nargs="?", const="local", metavar="ADDRESS",
+        help="also forward findings to syslog (local, or host:port for remote UDP)",
+    )
+    live.add_argument(
+        "--webhook", metavar="URL",
+        help="also POST each finding as JSON to URL",
+    )
     p.add_argument(
         "--min-severity",
         choices=[s.name for s in Severity],
@@ -151,9 +159,21 @@ def main(argv: list[str] | None = None) -> int:
 def _run_live(args, rules) -> int:
     """Live-interface monitoring: stream findings until Ctrl-C."""
     from argus.ingest import read_live
-    from argus.live import FindingSink, monitor
+    from argus.live import (
+        ConsoleSink, JsonlSink, MultiSink, SyslogSink, WebhookSink, monitor,
+    )
 
-    sink = FindingSink(jsonl_path=args.jsonl)
+    sinks: list = [ConsoleSink()]
+    if args.jsonl:
+        sinks.append(JsonlSink(args.jsonl))
+    if args.syslog is not None:
+        try:
+            sinks.append(SyslogSink(None if args.syslog == "local" else args.syslog))
+        except Exception as exc:
+            print(f"syslog sink disabled ({exc})", file=sys.stderr)
+    if args.webhook:
+        sinks.append(WebhookSink(args.webhook))
+    sink = MultiSink(sinks)
     print(
         f"ARGUS live on {args.interface}"
         f"{' · bpf: ' + args.bpf if args.bpf else ''}"
@@ -167,6 +187,7 @@ def _run_live(args, rules) -> int:
             sink,
             tick=args.tick,
             default_window=args.window,
+            min_severity=Severity[args.min_severity],
         )
     except KeyboardInterrupt:
         print("\nstopped.")
