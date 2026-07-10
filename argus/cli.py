@@ -24,6 +24,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="write a self-contained HTML report to PATH",
     )
     p.add_argument(
+        "--serve",
+        action="store_true",
+        help="analyse the pcap and serve the report over HTTP (localhost)",
+    )
+    p.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="port for --serve (default 8000)",
+    )
+    p.add_argument(
         "--min-severity",
         choices=[s.name for s in Severity],
         default="INFO",
@@ -78,6 +89,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.pcap:
         build_parser().error("a pcap path is required (or use --list-rules)")
+
+    if args.serve:
+        from argus.server import serve
+
+        serve(args.pcap, port=args.port)
+        return 0
 
     rules = all_rules
     if args.rules:
