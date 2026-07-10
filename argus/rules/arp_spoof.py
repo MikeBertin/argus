@@ -35,26 +35,28 @@ class ArpSpoofRule(Rule):
         if not ip or not mac:
             return []
 
-        rec = ctx.scratch(self.id).setdefault(
-            ip, {"macs": {}, "replies": 0, "first": pkt.number, "conflict_frame": None}
-        )
-        before = len(rec["macs"])
-        rec["macs"][mac] = rec["macs"].get(mac, 0) + 1
-        if str(field(arp, "opcode")) == ARP_REPLY:
-            rec["replies"] += 1
-        # remember the frame where a second (conflicting) MAC first appeared
-        if before < 2 <= len(rec["macs"]) and rec["conflict_frame"] is None:
-            rec["conflict_frame"] = pkt.number
+        is_reply = str(field(arp, "opcode")) == ARP_REPLY
+        ctx.window(self.id).add(ip, pkt.ts, (mac, is_reply, pkt.number), frame=pkt.number)
         return []
 
     def finalize(self, ctx: AnalysisContext) -> list[Finding]:
         findings: list[Finding] = []
-        for ip, rec in ctx.scratch(self.id).items():
-            macs = rec["macs"]
+        store = ctx.window(self.id)
+        for ip, obs in store.items():
+            macs: dict[str, int] = {}
+            replies = 0
+            conflict_frame = None
+            for mac, is_reply, frame in obs:
+                before = len(macs)
+                macs[mac] = macs.get(mac, 0) + 1
+                if is_reply:
+                    replies += 1
+                if before < 2 <= len(macs) and conflict_frame is None:
+                    conflict_frame = frame
             if len(macs) < 2:
                 continue
             # More forged replies → higher confidence in an active poisoning.
-            confidence = min(0.98, self.confidence + 0.02 * rec["replies"])
+            confidence = min(0.98, self.confidence + 0.02 * replies)
             findings.append(
                 self.finding(
                     title=f"ARP spoofing: {ip} claimed by {len(macs)} MAC addresses",
@@ -64,9 +66,9 @@ class ArpSpoofRule(Rule):
                     evidence={
                         "ip": ip,
                         "mac_addresses": list(macs.keys()),
-                        "arp_replies": rec["replies"],
+                        "arp_replies": replies,
                     },
-                    packets=[rec["conflict_frame"] or rec["first"]],
+                    packets=[conflict_frame or store.first_frame(ip)],
                 )
             )
         return findings

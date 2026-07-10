@@ -45,21 +45,19 @@ class LlmnrSpoofRule(Rule):
         if not name:
             return []
 
-        rec = ctx.scratch(self.id).setdefault(
-            pkt.src,
-            {"names": set(), "protocols": set(), "count": 0, "first": pkt.number},
+        ctx.window(self.id).add(
+            pkt.src, pkt.ts, (str(name).strip(), proto), frame=pkt.number
         )
-        rec["names"].add(str(name).strip())
-        rec["protocols"].add(proto)
-        rec["count"] += 1
         return []
 
     def finalize(self, ctx: AnalysisContext) -> list[Finding]:
         findings: list[Finding] = []
-        for responder, rec in ctx.scratch(self.id).items():
-            if len(rec["names"]) < self.MIN_NAMES:
+        store = ctx.window(self.id)
+        for responder, obs in store.items():
+            names = sorted({o[0] for o in obs})
+            if len(names) < self.MIN_NAMES:
                 continue
-            names = sorted(rec["names"])
+            protocols = sorted({o[1] for o in obs})
             findings.append(
                 self.finding(
                     title=(
@@ -71,12 +69,12 @@ class LlmnrSpoofRule(Rule):
                     dst=None,
                     evidence={
                         "responder": responder,
-                        "protocols": sorted(rec["protocols"]),
+                        "protocols": protocols,
                         "names_answered": names[:15],
                         "distinct_names": len(names),
-                        "responses": rec["count"],
+                        "responses": len(obs),
                     },
-                    packets=[rec["first"]],
+                    packets=[store.first_frame(responder)],
                 )
             )
         return findings

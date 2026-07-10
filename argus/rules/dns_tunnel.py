@@ -52,45 +52,43 @@ class DnsTunnelRule(Rule):
             return []
 
         label = _leftmost_label(qname)
-        rec = ctx.scratch(self.id).setdefault(
+        ctx.window(self.id).add(
             _parent_domain(qname),
-            {"queries": 0, "labels": set(), "lengths": [], "entropies": [],
-             "src": None, "dst": None, "first_frame": pkt.number},
+            pkt.ts,
+            (label, pkt.src, pkt.dst),
+            frame=pkt.number,
         )
-        rec["queries"] += 1
-        rec["labels"].add(label)
-        rec["lengths"].append(len(label))
-        rec["entropies"].append(shannon_entropy(label))
-        rec["src"] = pkt.src
-        rec["dst"] = pkt.dst
         return []
 
     def finalize(self, ctx: AnalysisContext) -> list[Finding]:
         findings: list[Finding] = []
-        for parent, rec in ctx.scratch(self.id).items():
-            if rec["queries"] < self.MIN_QUERIES:
+        store = ctx.window(self.id)
+        for parent, obs in store.items():
+            queries = len(obs)
+            if queries < self.MIN_QUERIES:
                 continue
-            avg_len = statistics.mean(rec["lengths"])
-            avg_entropy = statistics.mean(rec["entropies"])
+            labels = {o[0] for o in obs}
+            avg_len = statistics.mean(len(o[0]) for o in obs)
+            avg_entropy = statistics.mean(shannon_entropy(o[0]) for o in obs)
             if avg_len < self.MIN_AVG_LABEL_LEN or avg_entropy < self.MIN_AVG_ENTROPY:
                 continue
             findings.append(
                 self.finding(
                     title=(
-                        f"DNS tunnelling: {rec['queries']} long high-entropy "
+                        f"DNS tunnelling: {queries} long high-entropy "
                         f"subdomains under '{parent}'"
                     ),
                     confidence=min(0.99, 0.7 + avg_entropy / 20),
-                    src=rec["src"],
-                    dst=rec["dst"],
+                    src=obs[-1][1],
+                    dst=obs[-1][2],
                     evidence={
                         "parent_domain": parent,
-                        "queries": rec["queries"],
-                        "unique_subdomains": len(rec["labels"]),
+                        "queries": queries,
+                        "unique_subdomains": len(labels),
                         "avg_label_len": round(avg_len, 1),
                         "avg_label_entropy": round(avg_entropy, 2),
                     },
-                    packets=[rec["first_frame"]],
+                    packets=[store.first_frame(parent)],
                 )
             )
         return findings

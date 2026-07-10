@@ -99,6 +99,9 @@ class Rule(ABC):
     mitre: list[str] = []
     confidence: float = 0.8
     description: str = ""
+    # live monitoring: sliding-window length (seconds) for this rule's aggregation;
+    # None → use the monitor's global default. Batch mode ignores this.
+    window_seconds: float | None = None
 
     def inspect_packet(
         self, pkt: NormalizedPacket, ctx: "AnalysisContext"

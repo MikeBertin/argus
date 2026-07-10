@@ -62,6 +62,12 @@ class FlowTable:
         flow.update(pkt)
         return flow
 
+    def evict(self, cutoff: float) -> None:
+        """Drop flows with no activity since ``cutoff`` (live-mode memory hygiene)."""
+        for key in list(self._flows):
+            if self._flows[key].last_ts < cutoff:
+                del self._flows[key]
+
     def __len__(self) -> int:
         return len(self._flows)
 

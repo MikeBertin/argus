@@ -14,6 +14,8 @@ mislabelling a SYN scan/flood as a brute-force.
 
 from __future__ import annotations
 
+from collections import defaultdict
+
 from argus.context import AnalysisContext
 from argus.models import Finding, NormalizedPacket, Rule, Severity
 from argus.rules._util import field, layer, truthy
@@ -65,24 +67,36 @@ class BruteForceRule(Rule):
         except (TypeError, ValueError):
             seg_len = 0
 
-        grp = ctx.scratch(self.id).setdefault(
-            (client, server, svc_port), {"conns": {}, "first": pkt.number}
-        )
-        conn = grp["conns"].setdefault(client_port, {"established": False, "data": False})
-
-        # SYN-ACK comes from the server (a reverse packet) → handshake established.
+        # SYN-ACK from the server (reverse) → established; forward payload → data;
+        # anything else is just a connection "touch". One observation per packet.
         if not forward and truthy(field(tcp, "flags_syn")) and truthy(field(tcp, "flags_ack")):
-            conn["established"] = True
-        if seg_len > 0:
-            conn["data"] = True
+            kind = "established"
+        elif seg_len > 0:
+            kind = "data"
+        else:
+            kind = None
+        ctx.window(self.id).add(
+            (client, server, svc_port, client_port), pkt.ts, kind, frame=pkt.number
+        )
         return []
 
     def finalize(self, ctx: AnalysisContext) -> list[Finding]:
+        store = ctx.window(self.id)
+        groups: dict = defaultdict(
+            lambda: {"conns": set(), "attempt_conns": set(), "first": None}
+        )
+        for (client, server, svc_port, client_port), kinds in store.items():
+            g = groups[(client, server, svc_port)]
+            g["conns"].add(client_port)
+            if any(k in ("established", "data") for k in kinds):
+                g["attempt_conns"].add(client_port)
+            first = store.first_frame((client, server, svc_port, client_port))
+            if g["first"] is None or (first is not None and first < g["first"]):
+                g["first"] = first
+
         findings: list[Finding] = []
-        for (client, server, svc_port), grp in ctx.scratch(self.id).items():
-            attempts = sum(
-                1 for c in grp["conns"].values() if c["established"] or c["data"]
-            )
+        for (client, server, svc_port), g in groups.items():
+            attempts = len(g["attempt_conns"])
             if attempts < self.MIN_ATTEMPTS:
                 continue
             svc = AUTH_PORTS.get(svc_port, str(svc_port))
@@ -99,9 +113,9 @@ class BruteForceRule(Rule):
                         "service": svc,
                         "port": svc_port,
                         "login_attempts": attempts,
-                        "distinct_connections": len(grp["conns"]),
+                        "distinct_connections": len(g["conns"]),
                     },
-                    packets=[grp["first"]],
+                    packets=[g["first"]],
                 )
             )
         return findings

@@ -95,3 +95,22 @@ def read_pcap(path: str) -> Iterator[NormalizedPacket]:
             yield normalize(pkt)
     finally:
         cap.close()
+
+
+def read_live(interface: str, bpf_filter: str | None = None) -> Iterator[NormalizedPacket]:
+    """Yield NormalizedPackets sniffed live off ``interface``.
+
+    Requires packet-capture privileges (root / access to /dev/bpf on macOS, or
+    ``cap_net_raw`` on Linux). ``bpf_filter`` pre-filters at the kernel to cut
+    volume (e.g. "tcp port 443").
+    """
+    _ensure_event_loop()
+    cap = pyshark.LiveCapture(interface=interface, bpf_filter=bpf_filter)
+    try:
+        for pkt in cap.sniff_continuously():
+            yield normalize(pkt)
+    finally:
+        try:
+            cap.close()
+        except Exception:
+            pass

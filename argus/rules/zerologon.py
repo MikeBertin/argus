@@ -41,29 +41,28 @@ class ZerologonRule(Rule):
         if cred is None:
             return []  # the matching response carries servercred, not clientcred
 
-        rec = ctx.scratch(self.id).setdefault(
-            (pkt.src, pkt.dst),
-            {"attempts": 0, "zero": 0, "computer": None, "frames": []},
-        )
-        rec["attempts"] += 1
-        rec["frames"].append(pkt.number)
         computer = field(netlogon, "netlogon_computer_name", "computer_name")
-        if computer:
-            rec["computer"] = computer
-        if is_all_zero_hex(cred):
-            rec["zero"] += 1
+        ctx.window(self.id).add(
+            (pkt.src, pkt.dst),
+            pkt.ts,
+            (is_all_zero_hex(cred), computer, pkt.number),
+        )
         return []
 
     def finalize(self, ctx: AnalysisContext) -> list[Finding]:
         findings: list[Finding] = []
-        for (src, dst), rec in ctx.scratch(self.id).items():
-            if rec["zero"] < self.THRESHOLD:
+        for (src, dst), obs in ctx.window(self.id).items():
+            zero = sum(1 for o in obs if o[0])
+            if zero < self.THRESHOLD:
                 continue
-            all_zero = rec["zero"] == rec["attempts"]
+            attempts = len(obs)
+            computer = next((o[1] for o in reversed(obs) if o[1]), None)
+            frames = [o[2] for o in obs]
+            all_zero = zero == attempts
             findings.append(
                 self.finding(
                     title=(
-                        f"Zerologon brute-force: {rec['zero']} NetrServerAuthenticate3 "
+                        f"Zerologon brute-force: {zero} NetrServerAuthenticate3 "
                         f"calls with an all-zero client credential"
                     ),
                     confidence=0.99 if all_zero else 0.9,
@@ -71,11 +70,11 @@ class ZerologonRule(Rule):
                     dst=dst,
                     evidence={
                         "cve": "CVE-2020-1472",
-                        "auth_attempts": rec["attempts"],
-                        "zero_credential_attempts": rec["zero"],
-                        "target_dc": rec["computer"],
+                        "auth_attempts": attempts,
+                        "zero_credential_attempts": zero,
+                        "target_dc": computer,
                     },
-                    packets=rec["frames"][:20],
+                    packets=frames[:20],
                 )
             )
         return findings

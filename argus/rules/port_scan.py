@@ -50,54 +50,47 @@ class PortScanRule(Rule):
         except (TypeError, ValueError):
             seg_len = 0
 
-        targets = ctx.scratch(self.id)
+        targets = ctx.window(self.id)
 
         if syn and not ack:
             # client → server SYN: this names a target.
-            key = (pkt.src, pkt.dst, pkt.dport)
-            rec = targets.setdefault(
-                key, {"syn": False, "synack": False, "data": False, "first": pkt.number}
-            )
-            rec["syn"] = True
+            targets.add((pkt.src, pkt.dst, pkt.dport), pkt.ts, "syn", frame=pkt.number)
         elif syn and ack:
             # server → client SYN-ACK: response to (client, server, server_port).
-            key = (pkt.dst, pkt.src, pkt.sport)
-            rec = targets.setdefault(
-                key, {"syn": False, "synack": False, "data": False, "first": pkt.number}
-            )
-            rec["synack"] = True
+            targets.add((pkt.dst, pkt.src, pkt.sport), pkt.ts, "synack", frame=pkt.number)
 
         if seg_len > 0:
             fwd = (pkt.src, pkt.dst, pkt.dport)
             rev = (pkt.dst, pkt.src, pkt.sport)
             if fwd in targets:
-                targets[fwd]["data"] = True
+                targets.add(fwd, pkt.ts, "data", frame=pkt.number)
             elif rev in targets:
-                targets[rev]["data"] = True
+                targets.add(rev, pkt.ts, "data", frame=pkt.number)
         return []
 
     def finalize(self, ctx: AnalysisContext) -> list[Finding]:
-        targets = ctx.scratch(self.id)
+        targets = ctx.window(self.id)
         # vertical: (client, server) -> scan-like ports ; horizontal: (client, port) -> hosts
         vert: dict = defaultdict(lambda: {"ports": set(), "half_open": 0, "first": None})
         horiz: dict = defaultdict(lambda: {"hosts": set(), "half_open": 0, "first": None})
 
-        for (client, server, port), rec in targets.items():
-            if not rec["syn"] or rec["data"]:
+        for (client, server, port), kinds in targets.items():
+            if "syn" not in kinds or "data" in kinds:
                 continue  # never SYN'd, or a real conversation → not a scan target
-            half_open = not rec["synack"]
+            half_open = "synack" not in kinds
+            first = targets.first_frame((client, server, port))
 
             v = vert[(client, server)]
             v["ports"].add(port)
             v["half_open"] += half_open
-            if v["first"] is None or rec["first"] < v["first"]:
-                v["first"] = rec["first"]
+            if v["first"] is None or first < v["first"]:
+                v["first"] = first
 
             h = horiz[(client, port)]
             h["hosts"].add(server)
             h["half_open"] += half_open
-            if h["first"] is None or rec["first"] < h["first"]:
-                h["first"] = rec["first"]
+            if h["first"] is None or first < h["first"]:
+                h["first"] = first
 
         findings: list[Finding] = []
         for (client, server), v in vert.items():

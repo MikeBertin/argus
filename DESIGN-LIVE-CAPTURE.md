@@ -1,8 +1,10 @@
 # ARGUS — Live Interface Capture (design / not yet implemented)
 
-> Status: **PLANNED, not built.** This doc is the implementation plan agreed 2026-06-21.
-> ARGUS today is a batch forensics tool (reads a `.pcap`). Live mode turns it into a
-> continuous monitor (IDS) that sniffs an interface and emits findings in real time.
+> Status: **BUILT 2026-07-10** (`argus --interface IFACE`). This doc is the original
+> plan; implemented via a per-rule `WindowStore` (timestamped events) + `ctx.evict()`
+> + `argus/live.py` (`monitor`/`Deduper`/`FindingSink`). Dedup keys normalise digits
+> out of the finding title so a growing count isn't re-alerted. Batch output unchanged
+> (rules never evict in `analyze`). Live capture needs sudo/BPF; replay tests are CI-safe.
 
 ## 1. Motivation
 Read packets off a live interface (`en0`/`eth0`) as they flow, instead of from a

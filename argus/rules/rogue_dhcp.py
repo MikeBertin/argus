@@ -35,27 +35,29 @@ class RogueDhcpRule(Rule):
         if field(dhcp, "option_dhcp") not in (DHCP_OFFER, DHCP_ACK):
             return []  # only server→client messages carry the offered config
 
-        offers = ctx.scratch(self.id).setdefault("offers", [])
-        offers.append(
+        ctx.window(self.id).add(
+            "offers",
+            pkt.ts,
             {
                 "gateways": field_values(dhcp, "option_router"),
                 "dns": frozenset(field_values(dhcp, "option_domain_name_server")),
                 "server_id": field(dhcp, "option_dhcp_server_id"),
                 "src": pkt.src,
-                "frame": pkt.number,
-            }
+            },
+            frame=pkt.number,
         )
         return []
 
     def finalize(self, ctx: AnalysisContext) -> list[Finding]:
-        offers = ctx.scratch(self.id).get("offers", [])
+        store = ctx.window(self.id)
+        offers = store.payloads("offers")
         if not offers:
             return []
 
         gateways: dict[str, str] = {}  # gateway -> server_id that offered it
         dns_sets: set[frozenset] = set()
         servers: set[str] = set()
-        first_frame = offers[0]["frame"]
+        first_frame = store.first_frame("offers")
         for o in offers:
             for gw in o["gateways"]:
                 gateways.setdefault(gw, o["server_id"] or o["src"])

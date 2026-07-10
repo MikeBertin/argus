@@ -46,9 +46,10 @@ python3.13 -m venv .venv               # pyshark 0.6 needs Python 3.13 (not 3.14
 .venv/bin/python -m argus.cli --json <pcap>                     # machine-readable
 .venv/bin/python -m argus.cli --html report.html <pcap>         # self-contained dashboard
 .venv/bin/python -m argus.cli --serve <pcap>                    # serve the dashboard on localhost:8000
+sudo .venv/bin/python -m argus.cli --interface en0 --bpf "tcp"  # LIVE monitor an interface (IDS mode)
 .venv/bin/python -m argus.cli --list-rules
 .venv/bin/python -m argus.cli --update-ja3                      # refresh JA3 blocklist from abuse.ch
-.venv/bin/python -m pytest                                      # 45 tests
+.venv/bin/python -m pytest                                      # 50 tests
 ```
 Exit code is non-zero when any HIGH/CRITICAL finding is present (CI-friendly).
 
@@ -93,6 +94,17 @@ argus --update-ja3                       # pull + cache abuse.ch SSLBL JA3 feed
 argus --update-ja3 --ja3-feed-url URL    # use a different feed
 ```
 The cache merges over the seed at load time, so detection still works offline afterwards.
+
+### Live monitoring (IDS mode)
+`--interface` sniffs an interface and streams findings in real time instead of reading a
+file — ARGUS becomes a continuous monitor:
+```bash
+sudo argus --interface en0 --bpf "tcp port 445" --window 120 --tick 5 --jsonl /tmp/argus.ndjson
+```
+Rules aggregate over a **sliding time window** (per-rule timestamped events, evicted each
+tick) and findings are **de-duplicated** so a scan isn't re-alerted every tick. Live
+capture needs packet-capture privileges (`sudo` / BPF on macOS, `cap_net_raw` on Linux).
+The same rules run in batch and live — batch (`analyze`) simply never evicts.
 
 ### Web-server mode
 `--serve` analyses the pcap and serves the report over HTTP instead of writing a file —

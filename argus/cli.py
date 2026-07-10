@@ -34,6 +34,25 @@ def build_parser() -> argparse.ArgumentParser:
         default=8000,
         help="port for --serve (default 8000)",
     )
+    live = p.add_argument_group("live monitoring")
+    live.add_argument(
+        "--interface",
+        metavar="IFACE",
+        help="sniff a live interface instead of reading a pcap (needs sudo/BPF)",
+    )
+    live.add_argument("--bpf", metavar="FILTER", help="BPF pre-filter for --interface")
+    live.add_argument(
+        "--window", type=float, default=120.0,
+        help="live sliding-window seconds (default 120; rules may override)",
+    )
+    live.add_argument(
+        "--tick", type=float, default=5.0,
+        help="live evaluation interval in seconds (default 5)",
+    )
+    live.add_argument(
+        "--jsonl", metavar="PATH",
+        help="also append live findings as JSON-lines to PATH",
+    )
     p.add_argument(
         "--min-severity",
         choices=[s.name for s in Severity],
@@ -82,6 +101,9 @@ def main(argv: list[str] | None = None) -> int:
 
     all_rules = discover_rules()
 
+    if args.interface:
+        return _run_live(args, all_rules)
+
     if args.list_rules:
         for r in all_rules:
             print(f"{r.id:18} {r.severity.name:9} {', '.join(r.mitre):10} {r.name}")
@@ -124,6 +146,43 @@ def main(argv: list[str] | None = None) -> int:
 
     # Exit non-zero when something high/critical was found (CI-friendly).
     return 1 if any(f.severity >= Severity.HIGH for f in result.findings) else 0
+
+
+def _run_live(args, rules) -> int:
+    """Live-interface monitoring: stream findings until Ctrl-C."""
+    from argus.ingest import read_live
+    from argus.live import FindingSink, monitor
+
+    sink = FindingSink(jsonl_path=args.jsonl)
+    print(
+        f"ARGUS live on {args.interface}"
+        f"{' · bpf: ' + args.bpf if args.bpf else ''}"
+        f" · window {args.window:g}s · tick {args.tick:g}s  (Ctrl-C to stop)",
+        flush=True,
+    )
+    try:
+        monitor(
+            rules,
+            read_live(args.interface, args.bpf),
+            sink,
+            tick=args.tick,
+            default_window=args.window,
+        )
+    except KeyboardInterrupt:
+        print("\nstopped.")
+    except PermissionError:
+        print(
+            f"Permission denied sniffing {args.interface}. Live capture needs "
+            f"privileges — try: sudo argus --interface {args.interface} ...",
+            file=sys.stderr,
+        )
+        return 2
+    except Exception as exc:  # pyshark/tshark failure (bad iface, no tshark, ...)
+        print(f"live capture failed: {exc}", file=sys.stderr)
+        return 2
+    finally:
+        sink.close()
+    return 0
 
 
 if __name__ == "__main__":

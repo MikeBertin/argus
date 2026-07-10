@@ -26,6 +26,8 @@ class BeaconingRule(Rule):
     MIN_BEACONS = 6
     MIN_INTERVAL = 1.0     # seconds — ignore sub-second chatter
     MAX_CV = 0.15          # coefficient of variation (stdev/mean) of intervals
+    # beaconing needs several intervals to establish periodicity → long window
+    window_seconds = 900.0
 
     def inspect_packet(
         self, pkt: NormalizedPacket, ctx: AnalysisContext
@@ -33,17 +35,16 @@ class BeaconingRule(Rule):
         # Only TCP connection attempts (SYNs already counted as packets here).
         if not pkt.proto.startswith("TCP") or pkt.dport is None:
             return []
-        rec = ctx.scratch(self.id).setdefault(
-            (pkt.src, pkt.dst, pkt.dport),
-            {"times": [], "first_frame": pkt.number},
+        ctx.window(self.id).add(
+            (pkt.src, pkt.dst, pkt.dport), pkt.ts, frame=pkt.number
         )
-        rec["times"].append(pkt.ts)
         return []
 
     def finalize(self, ctx: AnalysisContext) -> list[Finding]:
         findings: list[Finding] = []
-        for (src, dst, dport), rec in ctx.scratch(self.id).items():
-            times = rec["times"]
+        store = ctx.window(self.id)
+        for (src, dst, dport), _ in store.items():
+            times = store.timestamps((src, dst, dport))
             if len(times) < self.MIN_BEACONS:
                 continue
             times = sorted(times)
@@ -72,7 +73,7 @@ class BeaconingRule(Rule):
                         "mean_interval_s": round(mean, 2),
                         "jitter_cv": round(cv, 3),
                     },
-                    packets=[rec["first_frame"]],
+                    packets=[store.first_frame((src, dst, dport))],
                 )
             )
         return findings

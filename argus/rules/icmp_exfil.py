@@ -40,37 +40,32 @@ class IcmpExfilRule(Rule):
         if data_len <= self.OVERSIZE_BYTES:
             return []
 
-        rec = ctx.scratch(self.id).setdefault(
-            (pkt.src, pkt.dst),
-            {"count": 0, "total_bytes": 0, "max": 0, "frames": []},
-        )
-        rec["count"] += 1
-        rec["total_bytes"] += data_len
-        rec["max"] = max(rec["max"], data_len)
-        rec["frames"].append(pkt.number)
+        ctx.window(self.id).add((pkt.src, pkt.dst), pkt.ts, (data_len, pkt.number))
         return []
 
     def finalize(self, ctx: AnalysisContext) -> list[Finding]:
         findings: list[Finding] = []
-        for (src, dst), rec in ctx.scratch(self.id).items():
-            if rec["count"] < self.MIN_PACKETS:
+        for (src, dst), obs in ctx.window(self.id).items():
+            if len(obs) < self.MIN_PACKETS:
                 continue
+            sizes = [o[0] for o in obs]
+            frames = [o[1] for o in obs]
             findings.append(
                 self.finding(
                     title=(
-                        f"ICMP exfiltration: {rec['count']} oversized echo packets "
-                        f"(max {rec['max']} B payload)"
+                        f"ICMP exfiltration: {len(sizes)} oversized echo packets "
+                        f"(max {max(sizes)} B payload)"
                     ),
                     confidence=self.confidence,
                     src=src,
                     dst=dst,
                     evidence={
-                        "oversized_packets": rec["count"],
-                        "total_payload_bytes": rec["total_bytes"],
-                        "max_payload_bytes": rec["max"],
+                        "oversized_packets": len(sizes),
+                        "total_payload_bytes": sum(sizes),
+                        "max_payload_bytes": max(sizes),
                         "threshold_bytes": self.OVERSIZE_BYTES,
                     },
-                    packets=rec["frames"][:20],
+                    packets=frames[:20],
                 )
             )
         return findings
