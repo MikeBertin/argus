@@ -47,7 +47,7 @@ python3.13 -m venv .venv               # pyshark 0.6 needs Python 3.13 (not 3.14
 .venv/bin/python -m argus.cli --html report.html <pcap>         # self-contained dashboard
 .venv/bin/python -m argus.cli --list-rules
 .venv/bin/python -m argus.cli --update-ja3                      # refresh JA3 blocklist from abuse.ch
-.venv/bin/python -m pytest                                      # 39 tests
+.venv/bin/python -m pytest                                      # 43 tests
 ```
 Exit code is non-zero when any HIGH/CRITICAL finding is present (CI-friendly).
 
@@ -71,17 +71,19 @@ future web-server mode.
 | `port_scan` | One src probing many ports/hosts with unestablished SYNs (vertical + horizontal) | T1046 | MEDIUM | generated |
 | `arp_spoof` | One IP address claimed by 2+ MAC addresses (cache poisoning) | T1557.002 | HIGH | generated |
 | `bruteforce` | Many established login connections to one auth service (SMB/RDP/SSH/…) | T1110 | HIGH | generated |
-| `tls_fingerprint` | TLS Client Hello JA3 **and** JA4 matched against a known-bad blocklist (+ fingerprint enrichment for all TLS) | T1573 | HIGH / INFO | generated |
+| `tls_fingerprint` | TLS **JA3 + JA4** (Client Hello) and **JA4S** (Server Hello) matched against a known-bad blocklist (+ fingerprint enrichment for all TLS) | T1573 | HIGH / INFO | generated |
 | `llmnr_spoof` | One responder answering LLMNR/NBT-NS queries for many distinct names (Responder) | T1557.001 | HIGH | generated |
 | `rogue_dhcp` | Conflicting gateway/DNS offered via DHCP (rogue server redirecting traffic) | T1557 | HIGH | generated |
 
-### TLS fingerprinting (JA3 + JA4)
+### TLS fingerprinting (JA3 + JA4 client, JA4S server)
 `tls_fingerprint` computes both the [JA3](https://github.com/salesforce/ja3) and the
 newer [JA4](https://github.com/FoxIO-LLC/ja4) (FoxIO) fingerprint of every TLS Client
-Hello (GREASE-aware). It flags **HIGH** when *either* matches a known-bad blocklist,
-and records **INFO** enrichment carrying both fingerprints for every other TLS client
-so analysts can pivot on the client stack. The JA4 implementation is validated
-byte-for-byte against tshark's native `tls.handshake.ja4` in the test suite.
+Hello, **and JA4S of every Server Hello** (GREASE-aware). It flags **HIGH** when any
+matches a known-bad blocklist, and records **INFO** enrichment carrying the
+fingerprints for every other TLS client/server so analysts can pivot on the client or
+server stack (e.g. identify a C2 server by its JA4S across IPs). JA4 is validated
+byte-for-byte against tshark's native `tls.handshake.ja4`, and JA4S against FoxIO's
+reference implementation values — both in the test suite.
 
 The blocklist holds JA3 MD5s and/or JA4 strings — an embedded seed (no fabricated
 malware attributions) plus an optional live feed cached locally:

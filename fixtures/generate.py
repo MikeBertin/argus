@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import os
 import random
+import struct
 
 from scapy.all import (  # type: ignore
     ARP,
@@ -268,22 +269,53 @@ def _client_hello(src, dst, sport, ciphers, groups, t):
     return p
 
 
+def _server_hello(src, dst, sport, cipher, ext_list, t):
+    """Hand-crafted TLS Server Hello record (scapy's stateful TLS won't serialise
+    a standalone Server Hello, so build the wire bytes directly)."""
+    exts = b"".join(struct.pack(">HH", et, len(ed)) + ed for et, ed in ext_list)
+    body = (
+        struct.pack(">H", 0x0303) + (b"\xAA" * 32) + b"\x00"
+        + struct.pack(">H", cipher) + b"\x00"
+        + struct.pack(">H", len(exts)) + exts
+    )
+    hs = b"\x02" + struct.pack(">I", len(body))[1:] + body
+    record = b"\x16\x03\x03" + struct.pack(">H", len(hs)) + hs
+    p = (
+        Ether(src="de:ad:be:ef:00:02", dst="de:ad:be:ef:00:01")
+        / IP(src=src, dst=dst)
+        / TCP(sport=sport, dport=443, flags="PA", seq=1)
+        / Raw(load=record)
+    )
+    p.time = t
+    return p
+
+
 def tls_fingerprint() -> list:
-    """Two TLS Client Hellos: a 'malicious' fingerprint (blocklisted by the seed,
-    JA3 + JA4) talking to C2, and a benign one (enrichment only)."""
+    """TLS Client Hellos (JA3/JA4) + Server Hellos (JA4S): a 'malicious' client and
+    a 'malicious' server (both blocklisted by the seed), plus benign counterparts
+    (enrichment only)."""
     t = 1_700_000_900.0
-    # Distinctive, fixed fingerprint → deterministic JA3 (seeded into the blocklist).
-    malicious = _client_hello(
+    mal_client = _client_hello(
         VICTIM, C2, 51000,
         ciphers=[0xC02B, 0xC02F, 0xCCA9, 0xCCA8, 0xC013, 0xC014, 0x009C, 0x002F, 0x0035],
         groups=["x25519", "secp256r1", "secp384r1"], t=t,
     )
-    benign = _client_hello(
+    benign_client = _client_hello(
         VICTIM, "93.184.216.34", 51002,
         ciphers=[0x1301, 0x1302, 0x1303, 0xC02B, 0xC02F, 0x009E],
         groups=["x25519", "secp256r1"], t=t + 1,
     )
-    return [malicious, benign]
+    # malicious C2 server: TLS 1.2, distinctive extension set → seeded JA4S
+    mal_server = _server_hello(
+        C2, VICTIM, 443, 0xC02B,
+        [(0xFF01, b"\x00"), (0x000B, b"\x02\x01\x00"), (0x0023, b"")], t=t + 2,
+    )
+    # benign server: TLS 1.3 (supported_versions + key_share)
+    benign_server = _server_hello(
+        "93.184.216.34", VICTIM, 443, 0x1301,
+        [(0x002B, b"\x03\x04"), (0x0033, b"\x00\x1d\x00\x20" + b"\xBB" * 32)], t=t + 3,
+    )
+    return [mal_client, benign_client, mal_server, benign_server]
 
 
 def llmnr_spoof(n_names: int = 6) -> list:

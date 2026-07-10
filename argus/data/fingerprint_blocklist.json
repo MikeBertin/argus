@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "schema": "fingerprint -> { label, source }  (fingerprint = JA3 md5 (32 hex) or JA4 string)",
+    "schema": "fingerprint -> { label, source }  (fingerprint = JA3 md5, JA4 string, or JA4S string)",
     "note": "Embedded seed only. ARGUS ships no fabricated malware attributions. Add real threat intel here, or run `argus --update-ja3` to pull and cache the abuse.ch SSLBL JA3 feed (merged at load time, cache wins).",
     "ja3_feed": "https://sslbl.abuse.ch/blacklist/ja3_fingerprints.csv"
   },
@@ -10,6 +10,10 @@
   },
   "t12i090300_f1631a9af75e_c08b0bbc99a6": {
     "label": "Simulated malicious TLS client (ARGUS test fixture, JA4)",
+    "source": "argus-fixture"
+  },
+  "t120300_c02b_bec8bdbaef8a": {
+    "label": "Simulated malicious TLS server (ARGUS test fixture, JA4S)",
     "source": "argus-fixture"
   }
 }

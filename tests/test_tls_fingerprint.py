@@ -10,13 +10,14 @@ from conftest import PCAPS
 from argus.engine import Engine
 from argus.fingerprint_blocklist import _parse_feed_csv
 from argus.ja3 import is_grease, ja3_from_components
-from argus.ja4 import ja4_from_components
+from argus.ja4 import ja4_from_components, ja4s_from_components
 from argus.models import Severity
 
 FIXTURE = "generated/tls_fingerprint.pcap"
 # fingerprints of the malicious fixture Client Hello (both seeded into the blocklist).
 FIXTURE_MALICIOUS_JA3 = "1fb4e5b9b9d127b1efa51e95dd64c8c5"
 FIXTURE_MALICIOUS_JA4 = "t12i090300_f1631a9af75e_c08b0bbc99a6"
+FIXTURE_MALICIOUS_JA4S = "t120300_c02b_bec8bdbaef8a"
 
 
 # --- JA3 -------------------------------------------------------------------- #
@@ -85,6 +86,42 @@ def test_ja4_matches_tshark_native_oracle():
             mine.append(compute_ja4(tls[0]))
     cap.close()
     assert mine == native, f"JA4 mismatch vs tshark: {mine} != {native}"
+
+
+# --- JA4S (server) ---------------------------------------------------------- #
+def test_ja4s_matches_foxio_reference_value():
+    """A TLS 1.3 Server Hello (cipher 1301, extensions 002b,0033) must produce the
+    exact JA4S FoxIO's reference implementation emits for that profile."""
+    ja4s = ja4s_from_components(
+        protocol="t", version=0x0304, extensions=[0x002B, 0x0033],
+        cipher=0x1301, alpn_first=None,
+    )
+    assert ja4s == "t130200_1301_a56c5b993250"  # verified against FoxIO ja4db reference
+
+
+def test_ja4s_keeps_extension_order_and_grease():
+    # JA4S keeps extensions in order WITH grease (unlike client JA4_c) and the
+    # cipher is literal, not hashed.
+    ja4s = ja4s_from_components("t", 0x0303, [0x0A0A, 0xFF01, 0x000B], 0xC02F, "h2")
+    a, cipher, ext_hash = ja4s.split("_")
+    assert a == "t1203h2"  # tls1.2, 3 exts (grease counted), alpn h2
+    assert cipher == "c02f"
+    assert ext_hash == hashlib.sha256(b"0a0a,ff01,000b").hexdigest()[:12]
+
+
+def test_blocklisted_ja4s_server_fires_high():
+    result = Engine().analyze(str(PCAPS / FIXTURE))
+    hits = [f for f in result.findings if f.rule_id == "tls_fingerprint"
+            and f.severity is Severity.HIGH and f.evidence.get("ja4s")]
+    assert hits, "blocklisted JA4S server did not fire HIGH"
+    assert hits[0].evidence["ja4s"] == FIXTURE_MALICIOUS_JA4S
+
+
+def test_benign_server_ja4s_enrichment():
+    result = Engine().analyze(str(PCAPS / FIXTURE))
+    info = [f for f in result.findings if f.rule_id == "tls_fingerprint"
+            and f.severity is Severity.INFO and f.evidence.get("ja4s")]
+    assert info and info[0].evidence["ja4s"] == "t130200_1301_a56c5b993250"
 
 
 # --- rule ------------------------------------------------------------------- #

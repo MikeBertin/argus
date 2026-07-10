@@ -120,6 +120,57 @@ def _alpn_first(tls) -> str | None:
     return None
 
 
+def _effective_version_server(tls) -> int:
+    versions = _all_ints(tls, "handshake_extensions_supported_version")  # GREASE dropped
+    if versions:
+        return max(versions)
+    try:
+        text = getattr(tls, "handshake_version")
+        return int(text, 16) if text.lower().startswith("0x") else int(text)
+    except (AttributeError, TypeError, ValueError):
+        return 0
+
+
+def ja4s_from_components(
+    protocol: str,
+    version: int,
+    extensions: list[int],
+    cipher: int | None,
+    alpn_first: str | None,
+) -> str:
+    """Build JA4S from parsed Server Hello components.
+
+    Unlike client JA4, JA4S keeps extensions **in order with GREASE included**,
+    and JA4S_b is the single server-chosen cipher (not a hash).
+    """
+    ver = _VERSION.get(version, "00")
+    ext_len = min(len(extensions), 99)
+    alpn = f"{alpn_first[0]}{alpn_first[-1]}" if alpn_first else "00"
+    a = f"{protocol}{ver}{ext_len:02d}{alpn}"
+    ciph = _hex4(cipher) if cipher is not None else ""
+    ext_hash = (
+        _sha12(",".join(_hex4(e) for e in extensions))
+        if extensions
+        else "000000000000"
+    )
+    return f"{a}_{ciph}_{ext_hash}"
+
+
+def compute_ja4s(tls, protocol: str = "t") -> str | None:
+    """Compute JA4S from a pyshark TLS layer (Server Hello)."""
+    extensions = _all_ints(tls, "handshake_extension_type", drop_grease=False)
+    ciphers = _all_ints(tls, "handshake_ciphersuite", drop_grease=False)
+    if not extensions and not ciphers:
+        return None
+    return ja4s_from_components(
+        protocol,
+        _effective_version_server(tls),
+        extensions,
+        ciphers[0] if ciphers else None,
+        _alpn_first(tls),
+    )
+
+
 def compute_ja4(tls, protocol: str = "t") -> str | None:
     """Compute the JA4 string from a pyshark TLS layer (Client Hello)."""
     ciphers = _all_ints(tls, "handshake_ciphersuite")
