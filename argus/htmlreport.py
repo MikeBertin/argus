@@ -422,6 +422,66 @@ function argusSort(key){
 """
 
 
+def render_live_dashboard(source: str) -> str:
+    """A self-contained page that polls ``/live.json`` and re-renders as findings
+    stream in from the live monitor. Reuses the report theme/severity colours."""
+    sev_json = json.dumps(SEV_COLORS)
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARGUS live — {_esc(source)}</title>
+<style>{_css()}
+.live-dot{{display:inline-block;width:10px;height:10px;border-radius:50%;
+background:{CLEAN_COLOR};margin-right:8px;animation:pulse 1.6s infinite}}
+@keyframes pulse{{0%,100%{{opacity:1}}50%{{opacity:.25}}}}
+</style></head>
+<body><div class="wrap">
+<header>{_EYE_SVG}<div>
+<h1>ARGUS <span style="color:var(--muted);font-size:14px;letter-spacing:2px">LIVE</span></h1>
+<div class="sub"><span class="live-dot"></span>monitoring <code>{_esc(source)}</code>
+ · <span id="meta">connecting…</span></div>
+</div></header>
+<div class="panel"><div class="cards" id="cards"></div></div>
+<div class="panel"><h2>Findings (<span id="count">0</span>)</h2>
+<table id="findings"><thead><tr><th>Severity</th><th>Rule</th><th>Src → Dst</th>
+<th>ATT&amp;CK</th><th>Time</th><th>Finding</th></tr></thead>
+<tbody id="tbl"></tbody></table></div>
+<footer>ARGUS · live monitor · polling every 2s</footer>
+</div>
+<script>
+const SEV={sev_json};
+const ORDER=["CRITICAL","HIGH","MEDIUM","LOW","INFO"];
+function esc(s){{return (s==null?'':String(s)).replace(/[&<>]/g,c=>(
+  {{'&':'&amp;','<':'&lt;','>':'&gt;'}}[c]));}}
+function render(d){{
+  document.getElementById('meta').textContent =
+    d.total+' findings · updated '+new Date().toLocaleTimeString();
+  document.getElementById('count').textContent = d.total;
+  document.getElementById('cards').innerHTML = ORDER
+    .filter(n=>(d.counts[n]||0) || !(n==='INFO'||n==='LOW'))
+    .map(n=>`<div class="card sev" style="border-top:3px solid ${{SEV[n]}}">`+
+      `<div class="card-num" style="color:${{SEV[n]}}">${{d.counts[n]||0}}</div>`+
+      `<div class="card-lbl">${{n.toLowerCase()}}</div></div>`).join('');
+  document.getElementById('tbl').innerHTML = d.findings.map(f=>{{
+    const c=SEV[f.severity]||'#8b949e';
+    const ep=(f.src||f.dst)?`${{esc(f.src||'?')}} → ${{esc(f.dst||'?')}}`:'—';
+    const t=f.ts?new Date(f.ts*1000).toLocaleTimeString():'—';
+    return `<tr><td><span class="pill" style="background:${{c}}">${{f.severity}}</span></td>`+
+      `<td class="mono">${{esc(f.rule_id)}}</td>`+
+      `<td class="mono small">${{ep}}</td>`+
+      `<td class="small">${{esc((f.mitre||[]).join(', '))}}</td>`+
+      `<td class="num small">${{t}}</td><td>${{esc(f.title)}}</td></tr>`;
+  }}).join('');
+}}
+async function poll(){{
+  try{{ const r=await fetch('/live.json'); render(await r.json()); }}
+  catch(e){{ document.getElementById('meta').textContent='disconnected'; }}
+}}
+poll(); setInterval(poll, 2000);
+</script>
+</body></html>"""
+
+
 def render_html(model: dict) -> str:
     sev_counts = model["severity_counts"]
     data_json = json.dumps(model)

@@ -114,6 +114,12 @@ keep INFO enrichment off syslog/webhook.
 ```bash
 sudo argus --interface en0 --syslog --webhook https://hooks.example/argus --min-severity HIGH
 ```
+`--dashboard` additionally serves a **live-updating web dashboard** (localhost) that polls
+for new findings every 2s — severity tallies and a growing findings table, same theme as
+the static report:
+```bash
+sudo argus --interface en0 --dashboard --port 8000   # → http://127.0.0.1:8000/
+```
 
 ### Web-server mode
 `--serve` analyses the pcap and serves the report over HTTP instead of writing a file —

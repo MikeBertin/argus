@@ -17,7 +17,9 @@ import logging.handlers
 import os
 import re
 import sys
+import threading
 import urllib.request
+from collections import deque
 from typing import Callable, Iterable
 
 from rich.console import Console
@@ -180,6 +182,38 @@ class MultiSink:
     def close(self) -> None:
         for sink in self.sinks:
             sink.close()
+
+
+class DashboardSink:
+    """Thread-safe finding buffer + severity tally for the live web dashboard.
+
+    The monitor thread calls ``emit``; the HTTP server thread calls ``snapshot``.
+    """
+
+    def __init__(self, source: str, max_findings: int = 500) -> None:
+        self.source = source
+        self._lock = threading.Lock()
+        self._findings: deque = deque(maxlen=max_findings)  # newest first
+        self._counts = {s.name: 0 for s in Severity}
+        self._total = 0
+
+    def emit(self, finding: Finding, now: float) -> None:
+        with self._lock:
+            self._findings.appendleft(finding.to_dict())
+            self._counts[finding.severity.name] += 1
+            self._total += 1
+
+    def snapshot(self) -> dict:
+        with self._lock:
+            return {
+                "source": self.source,
+                "total": self._total,
+                "counts": dict(self._counts),
+                "findings": list(self._findings),
+            }
+
+    def close(self) -> None:
+        pass
 
 
 def rule_windows(rules: list[Rule], default_window: float) -> dict[str, float]:

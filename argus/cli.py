@@ -61,6 +61,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--webhook", metavar="URL",
         help="also POST each finding as JSON to URL",
     )
+    live.add_argument(
+        "--dashboard", action="store_true",
+        help="also serve a live-updating HTML dashboard (with --interface)",
+    )
     p.add_argument(
         "--min-severity",
         choices=[s.name for s in Severity],
@@ -173,6 +177,23 @@ def _run_live(args, rules) -> int:
             print(f"syslog sink disabled ({exc})", file=sys.stderr)
     if args.webhook:
         sinks.append(WebhookSink(args.webhook))
+
+    dashboard_httpd = None
+    if args.dashboard:
+        import threading
+
+        from argus.live import DashboardSink
+        from argus.server import make_dashboard_server
+
+        dash = DashboardSink(f"interface {args.interface}")
+        sinks.append(dash)
+        dashboard_httpd = make_dashboard_server(dash, f"interface {args.interface}", port=args.port)
+        threading.Thread(target=dashboard_httpd.serve_forever, daemon=True).start()
+        print(
+            f"  live dashboard → http://127.0.0.1:{dashboard_httpd.server_address[1]}/",
+            flush=True,
+        )
+
     sink = MultiSink(sinks)
     print(
         f"ARGUS live on {args.interface}"
@@ -203,6 +224,9 @@ def _run_live(args, rules) -> int:
         return 2
     finally:
         sink.close()
+        if dashboard_httpd is not None:
+            dashboard_httpd.shutdown()
+            dashboard_httpd.server_close()
     return 0
 
 
