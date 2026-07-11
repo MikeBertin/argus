@@ -29,10 +29,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="analyse the pcap and serve the report over HTTP (localhost)",
     )
     p.add_argument(
+        "--upload",
+        action="store_true",
+        help="serve a browser upload app: drop a pcap, get the report (localhost)",
+    )
+    p.add_argument(
         "--port",
         type=int,
         default=8000,
-        help="port for --serve (default 8000)",
+        help="port for --serve/--upload/--dashboard (default 8000)",
     )
     live = p.add_argument_group("live monitoring")
     live.add_argument(
@@ -109,6 +114,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"JA3 feed update failed ({url}): {exc}", file=sys.stderr)
             return 2
         print(f"JA3 blocklist updated: {count} fingerprints cached from {url}")
+        return 0
+
+    if args.upload:
+        from argus.server import serve_upload
+
+        serve_upload(port=args.port)
         return 0
 
     all_rules = discover_rules()

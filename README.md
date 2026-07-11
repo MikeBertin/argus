@@ -46,6 +46,7 @@ python3.13 -m venv .venv               # pyshark 0.6 needs Python 3.13 (not 3.14
 .venv/bin/python -m argus.cli --json <pcap>                     # machine-readable
 .venv/bin/python -m argus.cli --html report.html <pcap>         # self-contained dashboard
 .venv/bin/python -m argus.cli --serve <pcap>                    # serve the dashboard on localhost:8000
+.venv/bin/python -m argus.cli --upload                          # browser upload app: drop a pcap, get the report
 sudo .venv/bin/python -m argus.cli --interface en0 --bpf "tcp"  # LIVE monitor an interface (IDS mode)
 .venv/bin/python -m argus.cli --list-rules
 .venv/bin/python -m argus.cli --update-ja3                      # refresh JA3 blocklist from abuse.ch
@@ -129,6 +130,11 @@ argus --serve capture.pcap --port 8000   # → http://127.0.0.1:8000/
 ```
 Standard-library `http.server` (no new dependency), bound to **localhost only** (findings
 are sensitive). Reuses the same `build_report_model()` / `render_html()` as `--html`.
+
+`--upload` serves a **browser upload app** — drop a `.pcap`/`.pcapng` in the page and get
+the interactive report back, no terminal needed. Bound to localhost, single-threaded
+(pyshark's tshark subprocess is main-thread-only), with a 64 MB upload cap; the uploaded
+file is analysed in a temp file and deleted immediately after.
 
 **False-positive guards** (harness asserts zero findings): `http.cap` (web browsing),
 `dns+icmp.pcapng` (normal PTR lookups + pings), `nb6-startup.pcap` (NetBIOS startup).

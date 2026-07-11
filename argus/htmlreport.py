@@ -422,6 +422,61 @@ function argusSort(key){
 """
 
 
+def render_upload_page() -> str:
+    """A drag-and-drop page that POSTs a pcap to /analyze (browser-upload app)."""
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARGUS — analyse a capture</title>
+<style>{_css()}
+.drop{{border:2px dashed var(--line);border-radius:12px;padding:56px 24px;text-align:center;
+background:var(--panel);cursor:pointer;transition:border-color .2s,background .2s;display:block}}
+.drop.over{{border-color:var(--accent);background:#161b22}}
+.drop h2{{margin:0 0 8px;color:var(--text);text-transform:none;letter-spacing:0;font-size:18px}}
+.btn{{display:inline-block;margin-top:16px;background:var(--accent);color:#0e1116;border:none;
+border-radius:8px;padding:10px 22px;font-size:14px;font-weight:600;cursor:pointer}}
+input[type=file]{{display:none}}
+.hint{{color:var(--muted);font-size:13px;margin-top:10px}}
+</style></head>
+<body><div class="wrap">
+<header>{_EYE_SVG}<div><h1>ARGUS</h1>
+<div class="sub">drop a packet capture to analyse</div></div></header>
+<form id="f" method="post" action="/analyze" enctype="multipart/form-data">
+<label class="drop" id="drop">
+<h2>Drop a .pcap / .pcapng here</h2>
+<div class="hint">or click to choose a file · analysed locally, nothing leaves your machine</div>
+<input type="file" name="pcap" id="file" accept=".pcap,.pcapng,.cap" required>
+<div><button class="btn" type="submit">Analyse</button></div>
+<div class="hint" id="fname"></div>
+</label>
+</form>
+<footer>ARGUS · runs locally on 127.0.0.1</footer>
+</div>
+<script>
+const drop=document.getElementById('drop'),file=document.getElementById('file'),
+  f=document.getElementById('f'),fname=document.getElementById('fname');
+['dragenter','dragover'].forEach(e=>drop.addEventListener(e,ev=>{{
+  ev.preventDefault();drop.classList.add('over');}}));
+['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{{
+  ev.preventDefault();drop.classList.remove('over');}}));
+drop.addEventListener('drop',ev=>{{file.files=ev.dataTransfer.files;show();}});
+file.addEventListener('change',show);
+function show(){{ if(file.files.length){{ fname.textContent=file.files[0].name; f.submit(); }} }}
+</script>
+</body></html>"""
+
+
+def render_error_page(title: str, detail: str) -> str:
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>ARGUS — error</title>
+<style>{_css()}</style></head><body><div class="wrap">
+<header>{_EYE_SVG}<div><h1>ARGUS</h1><div class="sub">could not analyse the upload</div></div></header>
+<div class="panel"><h2>{_esc(title)}</h2>
+<p class="muted">{_esc(detail)}</p>
+<p><a href="/" style="color:var(--accent)">← try another capture</a></p></div>
+</div></body></html>"""
+
+
 def render_live_dashboard(source: str) -> str:
     """A self-contained page that polls ``/live.json`` and re-renders as findings
     stream in from the live monitor. Reuses the report theme/severity colours."""
