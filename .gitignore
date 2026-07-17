@@ -4,7 +4,9 @@ __pycache__/
 .pytest_cache/
 # Generated attack fixtures are reproducible from fixtures/generate.py
 fixtures/pcaps/generated/
-# Private future-session handover (not part of the public repo)
+# Private working docs — kept on disk, not part of the public repo
+STATUS.md
+log.md
 HANDOVER.md
 # Local ja4db API token (if ever created)
 .argus/

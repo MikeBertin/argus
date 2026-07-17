@@ -24,8 +24,7 @@ every packet and flow.
 **11 detection rules**, TLS JA3/JA4/JA4S fingerprinting, four batch surfaces
 (CLI/JSON · self-contained HTML report · web server · browser-upload app) and a
 **live IDS mode** (windowed detection streaming to console/JSON-lines/syslog/webhook/
-live dashboard). 61 tests, GitHub Actions CI green. See [`STATUS.md`](STATUS.md) for
-current state and [`log.md`](log.md) for the build history.
+live dashboard). 61 tests, GitHub Actions CI green.
 
 ## Architecture (summary)
 ```
@@ -147,11 +146,15 @@ Only `zerologon.pcap` is genuinely malicious; the synthetic positives for the ot
 rules are crafted by `fixtures/generate.py` (scapy).
 
 ## Key Files
-| File | Purpose |
-|------|---------|
-| `README.md` | This file |
-| `STATUS.md` | Current state and next action |
-| `log.md` | Decisions, progress, session notes |
+| File / dir | Purpose |
+|------------|---------|
+| `argus/engine.py` | Drives ingest → flow assembly → rules → ranked findings |
+| `argus/rules/` | Auto-discovered detection plugins (one file per rule) |
+| `argus/context.py` | Flow table + windowed event store (`WindowStore`) |
+| `argus/live.py` | Live monitor loop + output sinks |
+| `argus/server.py`, `argus/htmlreport.py` | Web modes + HTML report/dashboard/upload rendering |
+| `fixtures/generate.py` | Synthetic attack pcaps (scapy) |
+| `tests/` | pytest suite (positives + false-positive guards) |
 
 ## Notes
 - **Dependency**: `pyshark` requires `tshark` (`brew install wireshark`).
