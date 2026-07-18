@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.DS_Store
 # Generated attack fixtures are reproducible from fixtures/generate.py
 fixtures/pcaps/generated/
 # Private working docs — kept on disk, not part of the public repo
