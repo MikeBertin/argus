@@ -25,6 +25,7 @@ POSITIVES = {
     "generated/tls_fingerprint.pcap": "tls_fingerprint",
     "generated/llmnr_spoof.pcap": "llmnr_spoof",
     "generated/rogue_dhcp.pcap": "rogue_dhcp",
+    "generated/kerberoasting.pcap": "kerberoasting",
 }
 
 # benign captures that must produce zero findings
@@ -72,6 +73,32 @@ def test_bruteforce_does_not_overlap_scan_or_beacon():
     result = Engine().analyze(str(PCAPS / "generated/bruteforce_smb.pcap"))
     fired = {f.rule_id for f in result.findings}
     assert fired == {"bruteforce"}, f"unexpected overlap: {fired}"
+
+
+def test_aes_ticket_requests_do_not_trigger_kerberoasting():
+    """The FP guard that matters for this rule: a normal workstation asking for
+    the same *shape* of traffic (one client, several distinct SPNs) but with AES
+    encryption — plus a krbtgt referral offering RC4, which is routine. Only the
+    weak-etype half of the signal is absent, so silence proves the rule needs
+    both halves and isn't just counting TGS-REQs."""
+    result = Engine().analyze(str(PCAPS / "generated/kerberos_benign.pcap"))
+    assert result.findings == [], (
+        f"false positive on benign Kerberos: "
+        f"{[(f.rule_id, f.severity.name) for f in result.findings]}"
+    )
+
+
+def test_kerberoasting_reconstructs_full_spns_and_flags_rc4():
+    """SNameString is a *repeated* field — a naive getattr yields only the first
+    component, making every SPN look identical and collapsing the distinct-SPN
+    count to 1. Assert the full service/host SPNs survive."""
+    result = Engine().analyze(str(PCAPS / "generated/kerberoasting.pcap"))
+    kr = next(f for f in result.findings if f.rule_id == "kerberoasting")
+    assert kr.severity is Severity.HIGH
+    assert "T1558.003" in kr.mitre
+    assert kr.evidence["distinct_spns"] >= 5
+    assert "MSSQLSvc/db01.corp.local:1433" in kr.evidence["spns_requested"]
+    assert any("rc4" in e for e in kr.evidence["weak_etypes"])
 
 
 def test_zerologon_is_critical_and_attributed():

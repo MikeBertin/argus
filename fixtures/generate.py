@@ -37,6 +37,12 @@ from scapy.layers.tls.extensions import (  # type: ignore
     TLS_Ext_SupportedPointFormat,
 )
 from scapy.layers.tls.record import TLS  # type: ignore
+from scapy.layers.kerberos import (  # type: ignore
+    KRB_KDC_REQ_BODY,
+    KRB_TGS_REQ,
+    PrincipalName,
+)
+from scapy.asn1.asn1 import ASN1_GENERAL_STRING, ASN1_INTEGER  # type: ignore
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "pcaps", "generated")
@@ -45,6 +51,8 @@ VICTIM = "10.0.0.50"
 RESOLVER = "10.0.0.1"
 C2 = "203.0.113.66"          # TEST-NET-3, safe documentation range
 WEBSERVER = "203.0.113.10"
+ATTACKER = "10.0.0.66"       # domain-joined foothold (kerberoasting)
+DC = "10.0.0.10"             # domain controller / KDC
 
 random.seed(1472)  # deterministic fixtures
 
@@ -338,6 +346,80 @@ def llmnr_spoof(n_names: int = 6) -> list:
     return pkts
 
 
+def _tgs_req(src, spn: str, etypes: list[int], t: float, cname: str):
+    """A Kerberos TGS-REQ (msg-type 12) for one SPN, offering `etypes`."""
+    sname = PrincipalName(
+        nameType=ASN1_INTEGER(2),  # kRB5-NT-SRV-INST
+        nameString=[ASN1_GENERAL_STRING(p.encode()) for p in spn.split("/")],
+    )
+    principal = PrincipalName(
+        nameType=ASN1_INTEGER(1),  # kRB5-NT-PRINCIPAL
+        nameString=[ASN1_GENERAL_STRING(cname.encode())],
+    )
+    body = KRB_KDC_REQ_BODY(
+        cname=principal,
+        realm=ASN1_GENERAL_STRING(b"CORP.LOCAL"),
+        sname=sname,
+        nonce=ASN1_INTEGER(0x1234),
+        etype=[ASN1_INTEGER(e) for e in etypes],
+    )
+    p = (
+        Ether(src="de:ad:be:ef:00:01", dst="aa:aa:aa:00:00:10")
+        / IP(src=src, dst=DC)
+        / UDP(sport=45000, dport=88)
+        / KRB_TGS_REQ(reqBody=body)
+    )
+    p.time = t
+    return p
+
+
+# SPNs of the kind roasting tools target: service accounts, not machine accounts.
+ROAST_SPNS = [
+    "MSSQLSvc/db01.corp.local:1433",
+    "MSSQLSvc/db02.corp.local:1433",
+    "HTTP/intranet.corp.local",
+    "HTTP/reports.corp.local",
+    "CIFS/fileserver.corp.local",
+    "FTP/archive.corp.local",
+    "LDAP/app01.corp.local",
+    "TERMSRV/jump01.corp.local",
+]
+
+
+def kerberoasting(n_spns: int = 8) -> list:
+    """One client sweeping many SPNs and requesting RC4 (etype 23) — crackable."""
+    t = 1_700_001_200.0
+    return [
+        _tgs_req(ATTACKER, spn, [23], t + i * 0.3, "attacker")
+        for i, spn in enumerate(ROAST_SPNS[:n_spns])
+    ]
+
+
+def kerberos_benign(n_spns: int = 6) -> list:
+    """FP guard: a normal workstation requesting service tickets with AES.
+
+    Same *shape* as the attack (one client, several distinct SPNs) but modern
+    encryption — so only the weak-etype half of the signal is missing. This is
+    what stops the rule degenerating into "alert on any burst of TGS-REQs".
+    """
+    t = 1_700_001_300.0
+    spns = [
+        "CIFS/fileserver.corp.local",
+        "LDAP/dc01.corp.local",
+        "HOST/dc01.corp.local",
+        "HTTP/intranet.corp.local",
+        "CIFS/printsrv.corp.local",
+        "HOST/app01.corp.local",
+    ][:n_spns]
+    pkts = [
+        _tgs_req(VICTIM, spn, [18, 17], t + i * 2.0, "alice")
+        for i, spn in enumerate(spns)
+    ]
+    # A krbtgt referral is routine and must be ignored, even with RC4 offered.
+    pkts.append(_tgs_req(VICTIM, "krbtgt/CORP.LOCAL", [23], t + 20.0, "alice"))
+    return pkts
+
+
 def _dhcp_offer(server_ip, server_mac, gateway, dns, t):
     return (
         Ether(src=server_mac, dst="ff:ff:ff:ff:ff:ff")
@@ -378,6 +460,8 @@ def main() -> None:
         "tls_fingerprint.pcap": tls_fingerprint(),
         "llmnr_spoof.pcap": llmnr_spoof(),
         "rogue_dhcp.pcap": rogue_dhcp(),
+        "kerberoasting.pcap": kerberoasting(),
+        "kerberos_benign.pcap": kerberos_benign(),
     }
     for name, pkts in captures.items():
         path = os.path.join(OUT, name)
