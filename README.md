@@ -21,10 +21,10 @@ watched everything at once. The right metaphor for a many-eyed engine inspecting
 every packet and flow.
 
 ## Status
-**12 detection rules**, TLS JA3/JA4/JA4S fingerprinting, four batch surfaces
+**13 detection rules**, TLS JA3/JA4/JA4S fingerprinting, four batch surfaces
 (CLI/JSON · self-contained HTML report · web server · browser-upload app) and a
 **live IDS mode** (windowed detection streaming to console/JSON-lines/syslog/webhook/
-live dashboard). 64 tests, GitHub Actions CI green.
+live dashboard). 68 tests, GitHub Actions CI green.
 
 ## Architecture (summary)
 ```
@@ -82,6 +82,7 @@ numbers. Rendering is split into `build_report_model()` (data) and `render_html(
 | `llmnr_spoof` | One responder answering LLMNR/NBT-NS queries for many distinct names (Responder) | T1557.001 | HIGH | generated |
 | `rogue_dhcp` | Conflicting gateway/DNS offered via DHCP (rogue server redirecting traffic) | T1557 | HIGH | generated |
 | `kerberoasting` | One client requesting many distinct SPN service tickets with a weak (RC4/DES) encryption type — offline-crackable harvesting | T1558.003 | HIGH | generated |
+| `smb_lateral` | One host writing an executable to another's admin disk share (ADMIN$/C$) — PsExec-style service-binary drop | T1021.002 | HIGH | generated |
 
 ### TLS fingerprinting (JA3 + JA4 client, JA4S server)
 `tls_fingerprint` computes both the [JA3](https://github.com/salesforce/ja3) and the

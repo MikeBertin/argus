@@ -26,6 +26,7 @@ POSITIVES = {
     "generated/llmnr_spoof.pcap": "llmnr_spoof",
     "generated/rogue_dhcp.pcap": "rogue_dhcp",
     "generated/kerberoasting.pcap": "kerberoasting",
+    "generated/smb_lateral.pcap": "smb_lateral",
 }
 
 # benign captures that must produce zero findings
@@ -99,6 +100,30 @@ def test_kerberoasting_reconstructs_full_spns_and_flags_rc4():
     assert kr.evidence["distinct_spns"] >= 5
     assert "MSSQLSvc/db01.corp.local:1433" in kr.evidence["spns_requested"]
     assert any("rc4" in e for e in kr.evidence["weak_etypes"])
+
+
+def test_normal_file_share_write_does_not_trigger_smb_lateral():
+    """A normal file copy to an ordinary (non-admin) share must stay silent —
+    the rule keys on admin-disk-share + executable, not on SMB writes at large."""
+    result = Engine().analyze(str(PCAPS / "generated/smb_benign.pcap"))
+    assert "smb_lateral" not in {f.rule_id for f in result.findings}
+
+
+def test_zerologon_ipc_rpc_does_not_trigger_smb_lateral():
+    """zerologon's SMB is all IPC$/svcctl/samr named-pipe RPC — no admin disk
+    share, no executable. It must not read as a service-binary drop."""
+    result = Engine().analyze(str(PCAPS / "zerologon.pcap"))
+    assert "smb_lateral" not in {f.rule_id for f in result.findings}
+
+
+def test_smb_lateral_flags_admin_share_exe_write():
+    result = Engine().analyze(str(PCAPS / "generated/smb_lateral.pcap"))
+    lm = next(f for f in result.findings if f.rule_id == "smb_lateral")
+    assert lm.severity is Severity.HIGH
+    assert "T1021.002" in lm.mitre
+    assert "PSEXESVC.exe" in lm.evidence["executables"]
+    assert lm.evidence["admin_shares"] == ["ADMIN$"]
+    assert lm.evidence["bytes_written"] is True
 
 
 def test_zerologon_is_critical_and_attributed():

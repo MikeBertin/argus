@@ -43,6 +43,15 @@ from scapy.layers.kerberos import (  # type: ignore
     PrincipalName,
 )
 from scapy.asn1.asn1 import ASN1_GENERAL_STRING, ASN1_INTEGER  # type: ignore
+from scapy.layers.netbios import NBTSession  # type: ignore
+from scapy.layers.smb2 import (  # type: ignore
+    SMB2_Header,
+    SMB2_Tree_Connect_Request,
+    SMB2_Tree_Connect_Response,
+    SMB2_Create_Request,
+    SMB2_Create_Response,
+    SMB2_Write_Request,
+)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "pcaps", "generated")
@@ -420,6 +429,60 @@ def kerberos_benign(n_spns: int = 6) -> list:
     return pkts
 
 
+def _smb_session(src, dst, share: str, filename: str, t: float) -> list:
+    """A minimal SMB2 exchange: TreeConnect(share) -> Create(file) -> Write.
+
+    scapy handles the UTF-16 buffer encoding, and tshark binds the TID to the
+    share name across the session so the tree resolves on the create/write.
+    """
+    seq = {"c": 1000, "s": 5000}
+
+    def frame(payload, to_server, ts):
+        if to_server:
+            ip = IP(src=src, dst=dst)
+            tcp = TCP(sport=50100, dport=445, flags="PA", seq=seq["c"], ack=seq["s"])
+            seq["c"] += len(bytes(payload)) + 4
+        else:
+            ip = IP(src=dst, dst=src)
+            tcp = TCP(sport=445, dport=50100, flags="PA", seq=seq["s"], ack=seq["c"])
+            seq["s"] += len(bytes(payload)) + 4
+        p = (Ether(src="de:ad:be:ef:00:01", dst="aa:aa:aa:00:00:20")
+             / ip / tcp / NBTSession() / payload)
+        p.time = ts
+        return p
+
+    sid, tid = 0x99, 5
+    pkts = [
+        frame(SMB2_Header(Command=3, MID=1, SessionId=sid, TID=0)
+              / SMB2_Tree_Connect_Request(Buffer=[("Path", share)]), True, t),
+        frame(SMB2_Header(Command=3, MID=1, SessionId=sid, TID=tid, Flags=1)
+              / SMB2_Tree_Connect_Response(ShareType=1), False, t + 0.01),
+        frame(SMB2_Header(Command=5, MID=2, SessionId=sid, TID=tid)
+              / SMB2_Create_Request(Buffer=[("Name", filename)]), True, t + 0.02),
+        frame(SMB2_Header(Command=5, MID=2, SessionId=sid, TID=tid, Flags=1)
+              / SMB2_Create_Response(), False, t + 0.03),
+        frame(SMB2_Header(Command=9, MID=3, SessionId=sid, TID=tid)
+              / SMB2_Write_Request(Data=b"MZ\x90\x00" + b"\x00" * 128), True, t + 0.04),
+    ]
+    return pkts
+
+
+def smb_lateral() -> list:
+    """PsExec-style drop: an executable written to the victim's ADMIN$ share."""
+    return _smb_session(ATTACKER, "10.0.0.20", "\\\\SRV01\\ADMIN$",
+                        "PSEXESVC.exe", 1_700_001_400.0)
+
+
+def smb_benign() -> list:
+    """FP guard: a normal file copy to an ordinary (non-admin) file share.
+
+    Same SMB2 machinery as the attack, but a regular share and a document —
+    proving the rule keys on admin-disk-share + executable, not on SMB writes
+    in general. (zerologon.pcap is the other guard: real IPC$/svcctl RPC.)"""
+    return _smb_session(VICTIM, "10.0.0.20", "\\\\SRV01\\Shared",
+                        "quarterly_report.docx", 1_700_001_500.0)
+
+
 def _dhcp_offer(server_ip, server_mac, gateway, dns, t):
     return (
         Ether(src=server_mac, dst="ff:ff:ff:ff:ff:ff")
@@ -462,6 +525,8 @@ def main() -> None:
         "rogue_dhcp.pcap": rogue_dhcp(),
         "kerberoasting.pcap": kerberoasting(),
         "kerberos_benign.pcap": kerberos_benign(),
+        "smb_lateral.pcap": smb_lateral(),
+        "smb_benign.pcap": smb_benign(),
     }
     for name, pkts in captures.items():
         path = os.path.join(OUT, name)
