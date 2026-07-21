@@ -74,14 +74,21 @@ class SmbLateralRule(Rule):
         if not share or not _ADMIN_SHARE.match(share):
             return []  # IPC$ / normal shares / no tree bound
 
+        # tshark attaches the filename (FID->name) to different frames across
+        # versions — the Create on 4.2.2, the Write on 4.6.x — so we can't rely
+        # on any one command carrying it. The tree (TID->share) binding *is*
+        # stable. So: record every admin-share Create/Write keyed on the tree,
+        # and let finalize decide from the whole set whether an executable was
+        # seen (identity) and whether bytes were written (a Write occurred).
         fname = field(smb, "filename")
-        if not fname or not str(fname).lower().endswith(_EXE_SUFFIXES):
-            return []  # not an executable payload
+        is_exe = bool(fname) and str(fname).lower().endswith(_EXE_SUFFIXES)
+        if cmd == SMB2_CREATE and not is_exe:
+            return []  # a create of a non-executable on an admin share — ignore
 
         ctx.window(self.id).add(
             (pkt.src, pkt.dst),
             pkt.ts,
-            (share, str(fname), cmd),
+            (share, str(fname) if is_exe else None, cmd),
             frame=pkt.number,
         )
         return []
@@ -90,10 +97,14 @@ class SmbLateralRule(Rule):
         findings: list[Finding] = []
         store = ctx.window(self.id)
         for (src, dst), obs in store.items():
-            files = sorted({o[1] for o in obs})
+            files = sorted({o[1] for o in obs if o[1]})
+            if not files:
+                continue  # writes on an admin share but no executable named
             shares = sorted({o[0] for o in obs})
             # A Write (bytes actually landing) is a stronger signal than a bare
-            # open; boost confidence when one is present.
+            # open; boost confidence when one is present. Keyed on the command,
+            # not the filename, so it survives tshark's version-dependent name
+            # binding (see inspect_packet).
             wrote = any(o[2] == SMB2_WRITE for o in obs)
             conf = min(0.97, self.confidence + (0.1 if wrote else 0.0))
             findings.append(

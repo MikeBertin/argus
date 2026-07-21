@@ -24,7 +24,7 @@ every packet and flow.
 **13 detection rules**, TLS JA3/JA4/JA4S fingerprinting, four batch surfaces
 (CLI/JSON · self-contained HTML report · web server · browser-upload app) and a
 **live IDS mode** (windowed detection streaming to console/JSON-lines/syslog/webhook/
-live dashboard). 68 tests, GitHub Actions CI green.
+live dashboard). 70 tests, GitHub Actions CI green.
 
 ## Architecture (summary)
 ```

@@ -126,6 +126,31 @@ def test_smb_lateral_flags_admin_share_exe_write():
     assert lm.evidence["bytes_written"] is True
 
 
+@pytest.mark.parametrize("exe_on_write", [True, False], ids=["tshark4.6", "tshark4.2"])
+def test_smb_lateral_is_robust_to_tshark_filename_binding(exe_on_write):
+    """Regression for a real CI-only failure: tshark binds the FID->filename to
+    different frames by version — the Write on 4.6.x, the Create on 4.2.2 — while
+    the TID->tree binding is stable on both. The rule must report the same verdict
+    (exe identified, bytes_written True) regardless of which frame carried the
+    name. No pcap fixture can force the older binding, so drive finalize directly."""
+    from argus.context import AnalysisContext
+    from argus.rules.smb_lateral import SmbLateralRule
+
+    rule = SmbLateralRule()
+    ctx = AnalysisContext()
+    win = ctx.window(rule.id)
+    key = ("10.0.0.66", "10.0.0.20")
+    # Create carries the name only on the older tshark; Write carries it only on
+    # the newer one. Exactly one of the two frames has the filename resolved.
+    win.add(key, 1.0, ("ADMIN$", None if exe_on_write else "PSEXESVC.exe", "5"), frame=3)
+    win.add(key, 1.1, ("ADMIN$", "PSEXESVC.exe" if exe_on_write else None, "9"), frame=5)
+
+    findings = rule.finalize(ctx)
+    assert len(findings) == 1
+    assert findings[0].evidence["executables"] == ["PSEXESVC.exe"]
+    assert findings[0].evidence["bytes_written"] is True
+
+
 def test_zerologon_is_critical_and_attributed():
     result = Engine().analyze(str(PCAPS / "zerologon.pcap"))
     zl = next(f for f in result.findings if f.rule_id == "zerologon")
