@@ -555,6 +555,87 @@ def dns_over_tcp_benign() -> list:
     ]
 
 
+# --- TLS certificate fixtures -------------------------------------------------
+# Real DER certificates, generated once with openssl and embedded as base64 so
+# the fixture needs no `cryptography` dependency at build/CI time. Provenance:
+#   BAD  (self-signed, EXPIRED 2020-01, OpenSSL default "Internet Widgits" subj):
+#     openssl req -x509 -newkey rsa:2048 -nodes -not_before 20200101000000Z \
+#       -not_after 20200131000000Z -subj "/O=Internet Widgits Pty Ltd" ...
+#   LEAF (CA-issued by a separate root, in-date 2023->2030, real subject):
+#     openssl req/x509 -req -CA ca.crt -CAkey ca.key \
+#       -subj "/CN=www.example.com/O=Example Corp" -not_after 20300101000000Z ...
+_BAD_CERT_DER_B64 = (
+    "MIIDJzCCAg+gAwIBAgIUGy52nVyu9pFUGlFVlukKDW8FNu0wDQYJKoZIhvcNAQELBQAwIzEh"
+    "MB8GA1UECgwYSW50ZXJuZXQgV2lkZ2l0cyBQdHkgTHRkMB4XDTIwMDEwMTAwMDAwMFoXDTIw"
+    "MDEzMTAwMDAwMFowIzEhMB8GA1UECgwYSW50ZXJuZXQgV2lkZ2l0cyBQdHkgTHRkMIIBIjAN"
+    "BgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsAUZlfQmG1NdpeCV1Oz3zcbWrFEeZh1Qj3Qn"
+    "vkBoScNuZZHBPMlaZnGFQREd3ubOWiNjl+/qF4rnT8983KPGU9zdORJ3OeR3A/fYMWIwap2t"
+    "1dl+EXQy8R77rGktUxQTpsAzwchbir5Gdij1Cxc45ch+JRVwt2bK1ZK3NFCgn+r7m9vsKw1n"
+    "YPNOirWz5lNyccXn5O98j7e7i1RjeoVLSvVW4gNxD25gksSwj3CtFu1XjjHWWm2v5HotERvm"
+    "ZWCYJSlXdqQGNLObHTgY8K9wR6Pki7Zs5L+zdBx1C8xqPkIiaYuIbhGO/8fFALcZmrG2tJHd"
+    "FY40jgxxi7YFS5AxdwIDAQABo1MwUTAdBgNVHQ4EFgQUF2LQKchq6977gs/faUUlNs7v3Vkw"
+    "HwYDVR0jBBgwFoAUF2LQKchq6977gs/faUUlNs7v3VkwDwYDVR0TAQH/BAUwAwEB/zANBgkq"
+    "hkiG9w0BAQsFAAOCAQEAL2V4vID+DCOw7hdE/hDP2jh54trLvKSAhIIhOQ8InRH0UaJnUi/n"
+    "Y9PdGithrSFSqyy97CoWOaiuRcqgs349wYFE5Jd6nJa3izHmZKc5avZF+5/6xE1YLDf0pzVg"
+    "jrU5LtAN4+sVJiposbOedTfMsTS1HkcMgdVR5sMJKX7QuIuHbEl0itIMSRaCMsoTjQe6KiTQ"
+    "n1JfIMs+zCzn6A+sVZzTVDUlN7ZgdBy5VUDdCqhWjXeXPf04zfRjYJnXp7WvGXGBgbYZjXn1"
+    "uvqibvWkBY+f3ELMYkx1aiTNzPwricELnVVLY7C+u3L1zTo0kAY4iX2F/GoyDV2i0zZCJU79"
+    "bA=="
+)
+_LEAF_CERT_DER_B64 = (
+    "MIIDMzCCAhugAwIBAgIUaVDUl0ug0oQgyz42AVk+oBh3g/IwDQYJKoZIhvcNAQELBQAwMjEY"
+    "MBYGA1UEAwwPRXhhbXBsZSBSb290IENBMRYwFAYDVQQKDA1FeGFtcGxlIFRydXN0MB4XDTIz"
+    "MDEwMTAwMDAwMFoXDTMwMDEwMTAwMDAwMFowMTEYMBYGA1UEAwwPd3d3LmV4YW1wbGUuY29t"
+    "MRUwEwYDVQQKDAxFeGFtcGxlIENvcnAwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIB"
+    "AQDjDGIdeAF8mBM98WWamJujvYkPmW/Ht4VLRe2JHeviO4gaR1eaVkXG4p5QefCYQzR5xro"
+    "eMLqP1kScVVcTLGp4jvhHQg5mKGvXVCsa60VXKAepYbIZYc6osvZbniBrO8IM7+0D9Dumpl"
+    "fzUCxH9tNlue0bad3UWkajStXiFv72NOJJ8+PVJz8OMnUSsrhhGuncdKMHJEaFzwABJ+tBc"
+    "9QHCwQNF7tZZRCuB2RKlsx9A0akNMCF+MQImwxORqojKrpPWf7ZKXeOhe297xboSVZ+KYTT"
+    "Ay8mRNe2qrsGLAe1jADgQqcBWTMBX11A0Fx1q+xcqb7zN4sMAnkkb3nyNywXAgMBAAGjQjBA"
+    "MB0GA1UdDgQWBBRdHRtWo4JrjHj+3FCz7HI+ItMdSjAfBgNVHSMEGDAWgBTcRUpZVnfmFkqb"
+    "w2o3dN7ACzplRDANBgkqhkiG9w0BAQsFAAOCAQEAPRF5XjXxe1WszCnvSZ8IdN7asKGSvbXk"
+    "4+/0ooVeEwlOjAzmQ7PzGGa4Z333N52JmkdwH5cRfvTTPzCyMErrSm1VzrlHspmEJcGCrWD"
+    "Q55EiKlZNf02zKDfe0I1atN/TrlbV24Qwvl1eGhmOv3Cs1W5CWVTjfstjc4Me1i8Lrfrzut"
+    "ndVnkhf82lujNtKPS7mqJqLQpmKs03wY/HebgP6hCH+dRvBiPefJa2K++qdHdEgZONqctRx"
+    "Gm1/JXLIjkwXknJbW7VHMjhlip5f1B+BSfPYG/NkhDsMG/inSsjguFANFo6i+nl3I3yNSlW"
+    "IgR3HrCicgFRZJL9JeeZ733Fsg=="
+)
+
+
+def _u24(n: int) -> bytes:
+    return struct.pack("!I", n)[1:]
+
+
+def _tls_certificate_pkt(server_ip, client_ip, der_b64, t):
+    """A TLS 1.2 Certificate handshake record (type 22 / handshake 0x0b),
+    server -> client on 443, carrying the given DER cert. Manual framing so we
+    embed raw DER without scapy's crypto-backed Cert class."""
+    der = base64.b64decode(der_b64)
+    certs = _u24(len(der)) + der                       # certificate_list
+    handshake = b"\x0b" + _u24(len(_u24(len(certs)) + certs)) + _u24(len(certs)) + certs
+    record = b"\x16\x03\x03" + struct.pack("!H", len(handshake)) + handshake
+    p = (
+        Ether(src="de:ad:be:ef:00:02", dst="de:ad:be:ef:00:01")
+        / IP(src=server_ip, dst=client_ip)
+        / TCP(sport=443, dport=50000, flags="PA", seq=1)
+        / Raw(record)
+    )
+    p.time = t
+    return p
+
+
+def tls_cert_anomaly() -> list:
+    """A self-signed + expired + placeholder-subject server cert = HIGH."""
+    # Capture time 2023-11 is well after the cert's 2020 expiry.
+    return [_tls_certificate_pkt(WEBSERVER, VICTIM, _BAD_CERT_DER_B64, 1_700_001_800.0)]
+
+
+def tls_cert_benign() -> list:
+    """FP guard: a CA-issued, in-date, real-subject leaf cert must stay silent —
+    proves the rule keys on cert *anomalies*, not on TLS certs in general."""
+    return [_tls_certificate_pkt(WEBSERVER, VICTIM, _LEAF_CERT_DER_B64, 1_700_001_800.0)]
+
+
 def main() -> None:
     os.makedirs(OUT, exist_ok=True)
     captures = {
@@ -576,6 +657,8 @@ def main() -> None:
         "smb_benign.pcap": smb_benign(),
         "dns_zone_transfer.pcap": dns_zone_transfer(),
         "dns_over_tcp_benign.pcap": dns_over_tcp_benign(),
+        "tls_cert_anomaly.pcap": tls_cert_anomaly(),
+        "tls_cert_benign.pcap": tls_cert_benign(),
     }
     for name, pkts in captures.items():
         path = os.path.join(OUT, name)

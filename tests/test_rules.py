@@ -28,6 +28,7 @@ POSITIVES = {
     "generated/kerberoasting.pcap": "kerberoasting",
     "generated/smb_lateral.pcap": "smb_lateral",
     "generated/dns_zone_transfer.pcap": "dns_zone_transfer",
+    "generated/tls_cert_anomaly.pcap": "tls_cert_anomaly",
 }
 
 # benign captures that must produce zero findings
@@ -168,6 +169,55 @@ def test_dns_zone_transfer_success_is_high_and_attributed():
     assert zt.evidence["transfer_type"] == "AXFR"
     assert zt.evidence["succeeded"] is True
     assert zt.evidence["records_transferred"] >= 5
+
+
+def test_ca_issued_in_date_cert_does_not_trigger_tls_cert_anomaly():
+    """A CA-issued (issuer != subject), in-date, real-subject leaf cert must stay
+    silent — proves the rule keys on cert anomalies, not on TLS certs at large."""
+    result = Engine().analyze(str(PCAPS / "generated/tls_cert_benign.pcap"))
+    assert "tls_cert_anomaly" not in {f.rule_id for f in result.findings}
+
+
+def test_tls_cert_anomaly_flags_selfsigned_expired_placeholder():
+    result = Engine().analyze(str(PCAPS / "generated/tls_cert_anomaly.pcap"))
+    ca = next(f for f in result.findings if f.rule_id == "tls_cert_anomaly")
+    assert ca.severity is Severity.HIGH  # self-signed + expired -> the strong combo
+    assert "T1587.003" in ca.mitre
+    assert {"self_signed", "expired", "placeholder_subject"} <= set(
+        ca.evidence["anomalies"]
+    )
+    # self-signed: reconstructed issuer and subject DNs are identical
+    assert ca.evidence["subject"] == ca.evidence["issuer"]
+
+
+def test_tls_cert_single_anomaly_is_medium():
+    """A lone anomaly (e.g. an expired but CA-issued cert) is MEDIUM, not HIGH —
+    the honest-caveat tier. Driven through finalize so the severity logic is
+    tested without minting yet another cert fixture."""
+    from argus.context import AnalysisContext
+    from argus.rules.tls_cert_anomaly import TlsCertAnomalyRule
+
+    rule = TlsCertAnomalyRule()
+    ctx = AnalysisContext()
+    ctx.window(rule.id).add(
+        ("203.0.113.9", "10.0.0.50", "ab"), 1.0,
+        (("expired",), "CN=host.example", "CN=Real CA"), frame=1,
+    )
+    findings = rule.finalize(ctx)
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.MEDIUM
+    assert findings[0].evidence["anomalies"] == ["expired"]
+
+
+def test_selfsigned_dn_halves_primitive():
+    """issuer == subject shows up as a DN-attribute list of two equal halves,
+    regardless of string encoding — the core self-signed test."""
+    from argus.rules.tls_cert_anomaly import _symmetric
+
+    assert _symmetric(["Internet Widgits", "Internet Widgits"]) is True
+    assert _symmetric([]) is True  # vacuously symmetric (that encoding unused)
+    assert _symmetric(["Root CA", "Trust", "www.example.com", "Corp"]) is False
+    assert _symmetric(["only-one"]) is False  # odd length can't be two halves
 
 
 def test_zerologon_is_critical_and_attributed():

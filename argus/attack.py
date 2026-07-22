@@ -32,6 +32,9 @@ TECHNIQUES: dict[str, Technique] = {
     "T1590.002": Technique(
         "T1590.002", "Gather Victim Network Information: DNS", "Reconnaissance"
     ),
+    "T1587.003": Technique(
+        "T1587.003", "Develop Capabilities: Digital Certificates", "Resource Development"
+    ),
     "T1110": Technique("T1110", "Brute Force", "Credential Access"),
     "T1573": Technique("T1573", "Encrypted Channel", "Command and Control"),
     "T1557": Technique("T1557", "Adversary-in-the-Middle", "Credential Access"),

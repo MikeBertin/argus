@@ -21,7 +21,7 @@ watched everything at once. The right metaphor for a many-eyed engine inspecting
 every packet and flow.
 
 ## Status
-**14 detection rules**, TLS JA3/JA4/JA4S fingerprinting, four batch surfaces
+**15 detection rules**, TLS JA3/JA4/JA4S fingerprinting, four batch surfaces
 (CLI/JSON · self-contained HTML report · web server · browser-upload app) and a
 **live IDS mode** (windowed detection streaming to console/JSON-lines/syslog/webhook/
 live dashboard). 70 tests, GitHub Actions CI green.
@@ -84,6 +84,7 @@ numbers. Rendering is split into `build_report_model()` (data) and `render_html(
 | `kerberoasting` | One client requesting many distinct SPN service tickets with a weak (RC4/DES) encryption type — offline-crackable harvesting | T1558.003 | HIGH | generated |
 | `smb_lateral` | One host writing an executable to another's admin disk share (ADMIN$/C$) — PsExec-style service-binary drop | T1021.002 | HIGH | generated |
 | `dns_zone_transfer` | A DNS AXFR/IXFR query — bulk dump of an entire zone (a complete internal-namespace map); HIGH when the transfer returns records | T1590.002 | MEDIUM / HIGH | generated |
+| `tls_cert_anomaly` | A TLS server cert that is self-signed, expired/not-yet-valid, or carries a placeholder subject; HIGH for the disposable-attacker-cert combination | T1587.003 | MEDIUM / HIGH | generated |
 
 ### TLS fingerprinting (JA3 + JA4 client, JA4S server)
 `tls_fingerprint` computes both the [JA3](https://github.com/salesforce/ja3) and the
