@@ -508,6 +508,53 @@ def rogue_dhcp() -> list:
     return [legit, rogue]
 
 
+def _dns_over_tcp(src, dst, sport, dport, dns_obj, t):
+    """One DNS message over TCP/53, with the mandatory 2-byte length prefix."""
+    raw = bytes(dns_obj)
+    p = (
+        Ether(src="de:ad:be:ef:00:01", dst="de:ad:be:ef:00:02")
+        / IP(src=src, dst=dst)
+        / TCP(sport=sport, dport=dport, flags="PA", seq=1)
+        / Raw(struct.pack("!H", len(raw)) + raw)
+    )
+    p.time = t
+    return p
+
+
+def dns_zone_transfer() -> list:
+    """AXFR request + a successful response dumping the whole zone (HIGH tier)."""
+    t = 1_700_001_600.0
+    zone = "corp.local"
+    req = DNS(id=7, rd=0, qd=DNSQR(qname=zone, qtype="AXFR"))
+    # A successful transfer: SOA + several host records handed back.
+    rrs = (
+        DNSRR(rrname=zone, type="SOA", rdata="ns1.corp.local")
+        / DNSRR(rrname="dc01.corp.local", type="A", rdata="10.0.0.10")
+        / DNSRR(rrname="www.corp.local", type="A", rdata="10.0.0.20")
+        / DNSRR(rrname="mail.corp.local", type="A", rdata="10.0.0.25")
+        / DNSRR(rrname="vpn.corp.local", type="A", rdata="10.0.0.30")
+    )
+    resp = DNS(id=7, qr=1, aa=1, ancount=5, qd=DNSQR(qname=zone, qtype="AXFR"), an=rrs)
+    return [
+        _dns_over_tcp(ATTACKER, DC, 51000, 53, req, t),
+        _dns_over_tcp(DC, ATTACKER, 53, 51000, resp, t + 0.2),
+    ]
+
+
+def dns_over_tcp_benign() -> list:
+    """FP guard: an ordinary A lookup over TCP/53 (large/DNSSEC responses use
+    TCP too). Proves dns_zone_transfer keys on the AXFR *qtype*, not on the
+    transport — normal DNS-over-TCP must stay silent."""
+    t = 1_700_001_700.0
+    q = DNS(id=8, rd=1, qd=DNSQR(qname="www.corp.local", qtype="A"))
+    a = DNS(id=8, qr=1, ancount=1, qd=DNSQR(qname="www.corp.local", qtype="A"),
+            an=DNSRR(rrname="www.corp.local", type="A", rdata="10.0.0.20"))
+    return [
+        _dns_over_tcp(VICTIM, RESOLVER, 52000, 53, q, t),
+        _dns_over_tcp(RESOLVER, VICTIM, 53, 52000, a, t + 0.1),
+    ]
+
+
 def main() -> None:
     os.makedirs(OUT, exist_ok=True)
     captures = {
@@ -527,6 +574,8 @@ def main() -> None:
         "kerberos_benign.pcap": kerberos_benign(),
         "smb_lateral.pcap": smb_lateral(),
         "smb_benign.pcap": smb_benign(),
+        "dns_zone_transfer.pcap": dns_zone_transfer(),
+        "dns_over_tcp_benign.pcap": dns_over_tcp_benign(),
     }
     for name, pkts in captures.items():
         path = os.path.join(OUT, name)

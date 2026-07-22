@@ -27,6 +27,7 @@ POSITIVES = {
     "generated/rogue_dhcp.pcap": "rogue_dhcp",
     "generated/kerberoasting.pcap": "kerberoasting",
     "generated/smb_lateral.pcap": "smb_lateral",
+    "generated/dns_zone_transfer.pcap": "dns_zone_transfer",
 }
 
 # benign captures that must produce zero findings
@@ -149,6 +150,24 @@ def test_smb_lateral_is_robust_to_tshark_filename_binding(exe_on_write):
     assert len(findings) == 1
     assert findings[0].evidence["executables"] == ["PSEXESVC.exe"]
     assert findings[0].evidence["bytes_written"] is True
+
+
+def test_normal_dns_over_tcp_does_not_trigger_zone_transfer():
+    """Ordinary DNS-over-TCP (large/DNSSEC responses use TCP too) must stay
+    silent — the rule keys on the AXFR/IXFR qtype, not on the transport."""
+    result = Engine().analyze(str(PCAPS / "generated/dns_over_tcp_benign.pcap"))
+    assert "dns_zone_transfer" not in {f.rule_id for f in result.findings}
+
+
+def test_dns_zone_transfer_success_is_high_and_attributed():
+    result = Engine().analyze(str(PCAPS / "generated/dns_zone_transfer.pcap"))
+    zt = next(f for f in result.findings if f.rule_id == "dns_zone_transfer")
+    assert zt.severity is Severity.HIGH  # elevated because the transfer succeeded
+    assert "T1590.002" in zt.mitre
+    assert zt.evidence["zone"] == "corp.local"
+    assert zt.evidence["transfer_type"] == "AXFR"
+    assert zt.evidence["succeeded"] is True
+    assert zt.evidence["records_transferred"] >= 5
 
 
 def test_zerologon_is_critical_and_attributed():
