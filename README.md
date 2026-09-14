@@ -12,7 +12,7 @@ technique. Detections are pluggable Python rule classes, auto-discovered from a
 ## Goal & Why It Matters
 A genuinely useful, portfolio-grade network-forensics tool built on a clean,
 extensible architecture — the value is the engine design (flow assembly + rule
-plugin model), not the rule count. Supports the SPECTRE / OSCP track by turning
+plugin model), not the rule count. Supports an OSCP study track by turning
 raw captures into "look here first" triage.
 
 ## Why ARGUS
